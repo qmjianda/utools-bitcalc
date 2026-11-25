@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>bitcalc</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 顶部：模式切换 + 全局设置。设置项留在这一行，避免每个模式各造一套控件 -->
+  <header class="bar">
+    <div class="tabs" id="mode-tabs" role="tablist">
+      <button type="button" role="tab" data-mode="bits" aria-pressed="true">位计算</button>
+      <button type="button" role="tab" data-mode="proto" aria-pressed="false">协议解析</button>
+    </div>
+
+    <div class="bar-right">
+      <div class="seg" id="width-seg" role="group" aria-label="位宽">
+        <button type="button" data-w="8" title="按 8 位看">8</button>
+        <button type="button" data-w="16" title="按 16 位看">16</button>
+        <button type="button" data-w="32" title="按 32 位看">32</button>
+        <button type="button" data-w="64" title="按 64 位看" aria-pressed="true">64</button>
+      </div>
+      <label class="chk" for="signed-chk" title="按有符号整数解读">
+        <input type="checkbox" id="signed-chk">
+        <span class="box"></span>
+        <span class="lbl">有符号</span>
+      </label>
+      <button id="endian-btn" class="chip btn-chip" type="button" title="切换 HEX 字节序">BE</button>
+      <button id="clear-btn" class="btn" type="button" title="清除位域选择">清除</button>
+    </div>
+  </header>
+
+  <!-- 显示区：上行是当前上下文（提示 / 位域标签），下行是主数值 + 次要表示 -->
+  <section class="display">
+    <div class="disp-top">
+      <span class="hint" id="hint">点击翻转位 · 拖动选位域</span>
+      <button class="field-chip" id="field-chip" type="button" hidden title="点击清除位域选择"></button>
+    </div>
+    <div class="disp-main">
+      <span class="disp-val" id="val-dec" title="点击复制">0</span>
+      <button class="disp-sub" id="val-hex" type="button" title="点击复制 HEX">0x0</button>
+    </div>
+  </section>
+
+  <!-- 主体：位网格；协议解析模式下右侧并入字段表 -->
+  <div class="stage" id="stage">
+    <div id="grid"></div>
+    <div class="fields" id="field-panel" hidden>
+      <div class="fields-head">
+        <span class="fields-title">字段</span>
+        <button class="mini" id="field-edit-btn" type="button" title="编辑字段定义">定义…</button>
+      </div>
+      <div class="fields-body" id="field-body"></div>
+    </div>
+  </div>
+
+  <!-- 字段定义编辑器（协议解析模式点「定义…」打开） -->
+  <div class="spec" id="spec-panel" hidden>
+    <textarea id="spec-text" spellcheck="false" placeholder="每行一个字段，从最高位向下写；# 开头是注释
+名称 高:低   → 指定位范围，例如  opcode 15:12
+名称:位宽    → 自动分配，例如  mode:3
+名称 位宽    → 同上，例如    mode 3"></textarea>
+    <div class="spec-actions">
+      <span class="spec-msg" id="spec-msg"></span>
+      <button class="btn" id="spec-cancel" type="button">取消</button>
+      <button class="btn primary" id="spec-save" type="button">应用</button>
+    </div>
+  </div>
+
+  <!-- 次要读数：主数值已在显示区，这里只留需要复制/对照的表示 -->
+  <div class="readouts" id="readouts">
+    <div class="row" data-base="oct" title="点击复制 OCT">
+      <span class="row-name" id="name-oct">OCT</span>
+      <span class="row-val" id="val-oct"></span>
+    </div>
+    <div class="row" data-base="bin" title="点击复制 BIN">
+      <span class="row-name" id="name-bin">BIN</span>
+      <span class="row-val" id="val-bin"></span>
+    </div>
+    <div class="row" data-base="float" id="row-float" title="点击复制浮点值">
+      <span class="row-name" id="float-name">F64</span>
+      <span class="row-val" id="val-float"></span>
+    </div>
+  </div>
+
+  <div class="fallback">
+    <input id="fallback-expr" type="text" spellcheck="false" placeholder="表达式，例如 12 &lt;&lt; 3、pow(2,10)">
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="parser.js"></script>
+<script src="grid.js"></script>
+<script src="proto.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

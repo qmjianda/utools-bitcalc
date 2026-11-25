@@ -1,0 +1,13 @@
+# 调试台产出的截图（每次跑 dev/shot*.mjs 都会覆盖）
+dev/*.png
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# 打包产物
+*.upx
+node_modules/

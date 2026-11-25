@@ -1,0 +1,30 @@
+{
+  "pluginName": "位计算器",
+  "version": "0.4.0",
+  "description": "表达式 + 64 格 bit 网格同屏：拖选位域即取值/写值窗口，支持位宽、字节序、IEEE754 与协议字段定义。",
+  "author": "qmfr",
+  "homepage": "https://github.com/qmjianda/utools-bitcalc",
+  "main": "index.html",
+  "logo": "logo.png",
+  "features": [
+    {
+      "code": "bitcalc",
+      "description": "位计算器：表达式求值 + bit 网格，支持位宽 / 字节序 / 浮点",
+      "cmds": [
+        "bitcalc",
+        {
+          "type": "regex",
+          "label": "位计算",
+          "match": "/^0[xX][0-9a-fA-F]{1,16}$|^0[bB][01]{1,64}$|^0[oO][0-7]{1,22}$/"
+        },
+        {
+          "type": "regex",
+          "label": "按位计算",
+          "match": "/^[\\s0-9a-fA-FxX()]*[<>&|^~][\\s0-9a-fA-FxX()<>&|^~]*$/",
+          "minLength": 3,
+          "maxLength": 72
+        }
+      ]
+    }
+  ]
+}

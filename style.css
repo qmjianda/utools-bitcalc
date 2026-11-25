@@ -116,6 +116,50 @@ body {
   background: var(--hover);
 }
 
+/* ---------- 表达式输入 ---------- */
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 10px 14px;
+  flex: none;
+}
+
+.entry-k {
+  font: 600 11px/1 var(--num);
+  color: var(--muted);
+  letter-spacing: 0.4px;
+  flex: none;
+  padding: 0 2px;
+}
+
+.entry input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--fg);
+  font: 13px/1 var(--num);
+  font-variant-numeric: tabular-nums;
+}
+
+.entry input::placeholder { color: var(--subtle); }
+.entry input:hover { border-color: var(--border-strong); }
+.entry input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.entry input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft, rgba(180, 35, 24, 0.12));
+}
+.entry .mini { flex: none; }
+
 .modes button {
   border: 0;
   background: transparent;
@@ -455,6 +499,22 @@ body {
   color: var(--accent);
   white-space: nowrap;
 }
+
+/* 就地改值：值那一格换成的输入框，宽度只够写几个字符，不把整行撑变形 */
+.field-edit {
+  width: 74px;
+  height: 21px;
+  padding: 0 5px;
+  font: 600 11.5px/1 var(--num);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  outline: 3px solid var(--accent-soft);
+  text-align: right;
+}
+.field-edit[aria-invalid="true"] { border-color: var(--danger); outline-color: transparent; }
 
 .field-row.out-of-range { border-style: dashed; }
 .field-row.out-of-range .field-row-name,

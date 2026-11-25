@@ -37,9 +37,17 @@
                 stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
-      <button id="clear-btn" class="ghost" type="button" title="清除选区（Esc）">清除</button>
+      <button id="clear-btn" class="ghost" type="button" title="清除选区（Delete）">清除</button>
     </div>
   </header>
+
+  <!-- 表达式输入常驻在窗口里：早先只靠 uTools 子输入框，用户找不到在哪算 -->
+  <div class="entry">
+    <span class="entry-k" aria-hidden="true">ƒx</span>
+    <input id="expr-input" type="text" autocomplete="off" spellcheck="false"
+           aria-label="表达式输入" placeholder="输入表达式或数值：0xFF、1<<8 | 3、pow(2,16)">
+    <button id="expr-go" class="mini" type="button" title="计算（Enter）">计算</button>
+  </div>
 
   <!-- 左边是位，右边是值。两栏同高，位少的时候位网格在栏内垂直居中，不塌在顶部 -->
   <div class="split">
@@ -89,10 +97,10 @@
   <footer class="status">
     <span class="hint" id="hint" role="status" aria-live="polite">点击翻转位 · 拖动选位域</span>
     <button class="field-chip" id="field-chip" type="button" hidden title="点击清除位域选择"></button>
-    <span class="keys" aria-hidden="true"><kbd>Ctrl</kbd><kbd>Z</kbd> 撤销 · <kbd>Esc</kbd> 清除</span>
+    <span class="keys" aria-hidden="true"><kbd>Ctrl</kbd><kbd>Z</kbd> 撤销 · <kbd>Del</kbd> 清除</span>
   </footer>
 
-  <!-- 历史记录：点顶栏时钟图标 / Ctrl+H 打开，Esc 关闭 -->
+  <!-- 历史记录：点顶栏时钟图标 / Ctrl+H 打开，点浮层外面关闭 -->
   <div class="popover history" id="history-panel" role="dialog" aria-modal="false"
        aria-label="历史记录" hidden>
     <div class="pop-head">
@@ -150,7 +158,7 @@
     </div>
   </div>
 
-  <div class="fallback">
+  <div class="fallback" hidden>
     <input id="fallback-expr" type="text" spellcheck="false" aria-label="表达式输入"
            placeholder="表达式，例如 12 &lt;&lt; 3、pow(2,10)、0xFF &amp; 0x0F">
   </div>

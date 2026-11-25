@@ -1,7 +1,7 @@
 {
   "pluginName": "位计算器",
-  "version": "0.6.0",
-  "description": "位网格与数值分屏：拖选位域即取值/写值窗口，支持位宽、字节序、IEEE754、协议字段与命名方案，带历史记录。",
+  "version": "0.7.0",
+  "description": "位网格与数值分屏：窗口内直接写表达式，拖选位域即取值/写值，支持位宽、字节序、IEEE754、协议字段与命名方案，带历史记录。",
   "author": "qmfr",
   "homepage": "https://github.com/qmjianda/utools-bitcalc",
   "main": "index.html",

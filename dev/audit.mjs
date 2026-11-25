@@ -379,12 +379,13 @@ const keys = await evaluate(`(async () => {
   const after = q('#val-dec').textContent.trim();
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', ctrlKey: true, bubbles: true }));
   const opened = !q('#history-panel').hidden;
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  // 关浮层不能靠 Esc（uTools 拿它退出插件），点浮层外面即可
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
   const closed = q('#history-panel').hidden;
   return { before, after, opened, closed };
 })()`);
 check('undoShortcut', keys.before === '64' && keys.after === '15', 'before=' + keys.before + ' after=' + keys.after);
-check('historyShortcut', keys.opened === true && keys.closed === true, 'ctrl+H opened=' + keys.opened + ' esc closed=' + keys.closed);
+check('historyShortcut', keys.opened === true && keys.closed === true, 'ctrl+H opened=' + keys.opened + ' outside-click closed=' + keys.closed);
 
 // 历史里的值必须是「当时」的值：0x40 有利于抓「setTimeout 里才读 store.value」这类回退。
 const histSnap = await evaluate(`(async () => {
@@ -429,7 +430,7 @@ const interact = await evaluate(`(async () => {
   const afterArrow = rows().findIndex((r) => r.getAttribute('aria-selected') === 'true');
 
   window.__utRec.copied.length = 0;
-  rows()[1].querySelector('.field-row-val').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  rows()[1].querySelector('.field-row-name').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   q('#clear-btn').click();
   await frame();
   const full = q('#val-dec').textContent.trim();
@@ -486,6 +487,85 @@ check('settingsRestored', persisted.width === '16' && persisted.signed === true 
   'width=' + persisted.width + ' signed=' + persisted.signed + ' endian=' + persisted.endian);
 check('modeAndFieldsRestored', persisted.mode === 'proto' && persisted.fieldsShown === true && persisted.rows === 4,
   'mode=' + persisted.mode + ' rows=' + persisted.rows + ' panel=' + persisted.fieldsShown);
+
+// ---------- 9) 窗口内表达式输入 ----------
+const entry = await evaluate(`(async () => {
+  const q = (s) => document.querySelector(s);
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // 有选区时表达式写的是「选中段」，这里要测整值计算，先清掉选区；顺带切到 64 位
+  q('#width-seg button[data-w="64"]').click();
+  q('#clear-btn').click();
+  await frame();
+  const inp = q('#expr-input');
+  inp.value = '0xFF & 0x0F';
+  inp.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 320));
+  const typed = q('#val-dec').textContent.trim();
+  // Enter 立刻求值，不再等防抖；顺带验证求值后文本被全选，方便直接改写
+  inp.value = '1 << 20';
+  inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await frame();
+  const entered = q('#val-dec').textContent.trim();
+  return { typed, entered, selAll: inp.selectionStart === 0 && inp.selectionEnd === inp.value.length };
+})()`);
+check('exprInputComputes', entry.typed === '15' && entry.entered.replace(/,/g, '') === '1048576',
+  'typed=' + entry.typed + ' enter=' + entry.entered + ' selected=' + entry.selAll);
+
+// ---------- 10) 定义写超当前位宽必须拦住 ----------
+const wide = await evaluate(`(async () => {
+  const q = (s) => document.querySelector(s);
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const before = document.querySelectorAll('.field-row').length;
+  // 用 16 位来制造「写超」：39:36 在 64 位下是合法的，必须切到更小位宽才测得出拦截
+  q('#width-seg button[data-w="16"]').click();
+  await frame();
+  q('#field-edit-btn').click();
+  const t = q('#spec-text');
+  t.value = 'wide 39:36';
+  t.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 260));
+  const msg = q('#spec-msg').textContent.trim();
+  const invalid = t.getAttribute('aria-invalid') === 'true';
+  q('#spec-save').click();
+  await frame();
+  const stillOpen = !q('#spec-panel').hidden;
+  const after = document.querySelectorAll('.field-row').length;
+  q('#spec-cancel').click();
+  await frame();
+  q('#width-seg button[data-w="64"]').click();
+  await frame();
+  return { msg, invalid, stillOpen, before, after, closed: q('#spec-panel').hidden };
+})()`);
+check('specTooWideBlocked',
+  /超出当前位宽/.test(wide.msg) && wide.invalid === true && wide.stillOpen === true &&
+  wide.before === wide.after && wide.closed === true,
+  'msg=' + JSON.stringify(wide.msg) + ' invalid=' + wide.invalid + ' 应用后仍打开=' + wide.stillOpen +
+  ' 字段数 ' + wide.before + '→' + wide.after);
+
+// ---------- 11) 点字段值就地改值 ----------
+const inlineEdit = await evaluate(`(async () => {
+  const q = (s) => document.querySelector(s);
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  window.__utRec.subInput({ text: '0xA5CD' });
+  await frame();
+  // subInput 会 render() 重建字段行，旧引用已脱离文档，必须重新取
+  const row = document.querySelectorAll('.field-row')[0];
+  row.querySelector('.field-row-val').click();
+  await frame();
+  const inp = document.querySelector('.field-edit');
+  const opened = !!inp;
+  if (inp) {
+    inp.value = '3';
+    inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }
+  await frame();
+  const val = document.querySelectorAll('.field-row')[0].querySelector('.field-row-val').textContent.trim();
+  const hint = q('#hint').textContent.trim();
+  return { opened, val, hint, leftover: !!document.querySelector('.field-edit') };
+})()`);
+check('fieldInlineEdit',
+  inlineEdit.opened === true && inlineEdit.val === '0x3' && /已写入/.test(inlineEdit.hint) && inlineEdit.leftover === false,
+  '打开=' + inlineEdit.opened + ' 值=' + inlineEdit.val + ' 提示=' + JSON.stringify(inlineEdit.hint));
 
 // ---------- output ----------
 console.log(JSON.stringify({ cases: c, specUi, scheme, hist, keys, interact, persisted }, null, 2));
@@ -562,6 +642,14 @@ if (SHOTS) {
   await frames();
   await applySpec(SPEC32);
   await evaluate(`document.querySelector('#clear-btn').click()`);
+  if (process.argv.includes('--dump')) {
+    const rows = await evaluate(`(() => [...document.querySelectorAll('.field-row')].map((r) => {
+      const cs = getComputedStyle(r);
+      return { cls: r.className, sel: r.getAttribute('aria-selected'), w: +r.getBoundingClientRect().width.toFixed(1),
+               border: cs.borderTopStyle + ' ' + cs.borderTopColor, bg: cs.backgroundColor };
+    }))()`);
+    console.log(JSON.stringify(rows, null, 2));
+  }
   await sleep(1500); // 等状态行闪示淡出，截图里别留「已应用」
   await shoot('proto32');
 

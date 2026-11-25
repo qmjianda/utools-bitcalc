@@ -243,7 +243,7 @@ async function main() {
   });
   await go('#utools');
   await evalJs(`(() => {
-    const i = document.getElementById('fallback-expr');
+    const i = document.getElementById('expr-input');
     i.focus();
     i.value = '0xFF << ';
     i.dispatchEvent(new Event('input', { bubbles: true }));
@@ -255,11 +255,14 @@ async function main() {
 
   // ---- 场景 4：合法表达式 + 悬停某一位 ----
   await evalJs(`(() => {
-    const i = document.getElementById('fallback-expr');
+    const i = document.getElementById('expr-input');
     i.value = 'pow(2,17) | 0xFF00';
     i.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   })()`);
+  // 输入框有 200ms 防抖，等它算完再取坐标：否则求值引起的重建会发生在光标移动之后，
+  // :hover 状态被新节点丢掉，悬停断言偶发失败
+  await sleep(320);
   const hp = await cellCenter(37);
   await send('Input.dispatchMouseEvent', {
     type: 'mouseMoved',
@@ -348,7 +351,7 @@ async function main() {
 
   // ---- 场景 7：32 位下把位模式读成 f32 ----
   await evalJs(`(() => {
-    const i = document.getElementById('fallback-expr');
+    const i = document.getElementById('expr-input');
     i.value = '0x3FC00000';
     i.dispatchEvent(new Event('input', { bubbles: true }));
     return true;

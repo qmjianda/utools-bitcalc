@@ -203,7 +203,8 @@
 
   // ---------- 提示行 ----------
   function defaultHint() {
-    return mode === 'proto' ? '点字段行选中位域 · 双击复制字段值' : '点击翻转位 · 拖动选位域';
+    // 协议模式：三件事都能做，提示里要说全，否则「点值改值」没人会发现
+    return mode === 'proto' ? '点字段行选中位域 · 点值改值 · 双击复制' : '点击翻转位 · 拖动选位域';
   }
 
   function findField(start, end) {

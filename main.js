@@ -4,19 +4,14 @@
  * 分工：
  *   parser.js  表达式 → BigInt（纯函数，可单测）
  *   grid.js    位网格渲染 + 拖动选位域（纯几何函数可单测）
- *   proto.js   协议字段定义文本 → 字段表 + 解码（纯函数，可单测）
+ *   proto.js   字段定义文本 → 字段表 + 解码（纯函数，可单测）
  *   store.js   本地持久化：字段定义 / 历史记录 / 命名方案 / 界面设置
  *   main.js    以上四者的粘合层：状态机、格式化、DOM 事件、窗口高度
  *
- * 交互主轴（对应参考项目 BitCalc 的「选择部分 bit 显示值」）：
- *   拖选一段 bit → 主数值区立刻变成这一段的值（右移到 bit0），
- *   点字段表某行 → 等价于选中那段 bit；右键 / Delete / 点 chip 取消。
- *
- * 高度策略（曾经的 bug 就在这）：
- *   uTools 插件窗口高度由 setExpandHeight 决定。早先按"网格行数 + 固定面板高"自己推算，
- *   32 位时网格只有 2 行（59px），旁边/下面的字段表就被压成 59px，字段行被裁、滚不动。
- *   现在布局是自然高度（顶栏 + 左右分栏 + 字段区 + 状态行），fitHeight() 直接量内容，
- *   再把窗口设成一样高——CSS 改样式，高度自动跟上，不用同步改一份公式。
+ * 交互主轴：
+ *   拖选一段 bit → 值条变成这一段的值（右移到 bit0），输入表达式就写回这一段；
+ *   点字段行 → 选中该字段；点字段值 → 就地改值；字段面板可折叠。
+ *   表达式只由插件内自定义输入框承载，不使用 uTools 子输入框。
  */
 (function () {
   'use strict';
@@ -29,42 +24,75 @@
 
   var $ = function (sel) { return document.querySelector(sel); };
 
-  var HISTORY_DEBOUNCE = 900;  // 停止输入这么久才记一条历史，避免逐键记录
+  var HISTORY_DEBOUNCE = 900;
   var UNDO_MAX = 30;
   var WIDTHS = [8, 16, 32, 64];
   var BASES = ['dec', 'hex', 'oct'];
+  var FIELD_COLORS = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'];
 
   // ---------- 元素 ----------
   var el = {
+    app: $('#app'),
     hint: $('#hint'),
+    saveState: $('#save-state'),
+
     exprInput: $('#expr-input'),
-    exprGo: $('#expr-go'),
-    modeTabs: $('#mode-tabs'),
-    widthSeg: $('#width-seg'),
+
+    widthSelect: $('#width-select'),
+    widthLabel: $('#width-label'),
+    fieldsBtn: $('#fields-btn'),
+    fieldsCount: $('#fields-count'),
+    displayBtn: $('#display-btn'),
+    displayMenu: $('#display-menu'),
     signedChk: $('#signed-chk'),
     endianBtn: $('#endian-btn'),
-    clearBtn: $('#clear-btn'),
     historyBtn: $('#history-btn'),
-    historyPanel: $('#history-panel'),
+    moreBtn: $('#more-btn'),
+    moreMenu: $('#more-menu'),
+    undoBtn: $('#undo-btn'),
+    clearSelBtn: $('#clear-sel-btn'),
+    copyAllBtn: $('#copy-all-btn'),
+
+    valuebar: $('.valuebar'),
+    valBig: $('#val-big'),
+    eyebrow: $('#eyebrow'),
+    baseSwitch: $('#base-switch'),
+    ctxActions: $('#ctx-actions'),
+    ctxEdit: $('#ctx-edit'),
+    ctxClear: $('#ctx-clear'),
+    copyMain: $('#copy-main'),
+    selMeta: $('#sel-meta'),
+
+    gridRoot: $('#grid'),
+
+    content: $('#content'),
+    workbench: $('#workbench'),
+    inspector: $('#inspector'),
+    inspTabs: $('#insp-tabs'),
+    inspFields: $('#insp-fields'),
+    inspValues: $('#insp-values'),
+    inspHistory: $('#insp-history'),
+    tabFieldsCount: $('#tab-fields-count'),
+    fieldSummary: $('#field-summary'),
+    fieldList: $('#field-list'),
+    coverageBar: $('#coverage-bar'),
+    coverageText: $('#coverage-text'),
+    overlapText: $('#overlap-text'),
+    defineFields: $('#define-fields'),
+    addField: $('#add-field'),
+    valueTable: $('#value-table'),
+
     historyList: $('#history-list'),
     historyEmpty: $('#history-empty'),
     historyClear: $('#history-clear'),
-    valDec: $('#val-dec'),
-    valHex: $('#val-hex'),
-    baseSwitch: $('#base-switch'),
-    fieldChip: $('#field-chip'),
-    stage: $('#stage'),
-    gridRoot: $('#grid'),
-    fieldPanel: $('#field-panel'),
-    fieldBody: $('#field-body'),
-    fieldCount: $('#field-count'),
-    fieldEditBtn: $('#field-edit-btn'),
+
     specPanel: $('#spec-panel'),
     specText: $('#spec-text'),
     specMsg: $('#spec-msg'),
     specHelp: $('#spec-help'),
     specHelpToggle: $('#spec-help-toggle'),
     specSample: $('#spec-sample'),
+    specClose: $('#spec-close'),
     specCancel: $('#spec-cancel'),
     specSave: $('#spec-save'),
     schemeSelect: $('#scheme-select'),
@@ -74,13 +102,7 @@
     schemeForm: $('#scheme-form'),
     schemeName: $('#scheme-name'),
     schemeNameOk: $('#scheme-name-ok'),
-    schemeNameCancel: $('#scheme-name-cancel'),
-    readouts: $('#readouts'),
-    valOct: $('#val-oct'),
-    valBin: $('#val-bin'),
-    valFloat: $('#val-float'),
-    floatName: $('#float-name'),
-    rowFloat: $('#row-float')
+    schemeNameCancel: $('#scheme-name-cancel')
   };
 
   // ---------- 状态 ----------
@@ -90,19 +112,21 @@
     signed: false,
     width: 64,
     le: false,
-    base: 'dec'       // 主数字的进制：dec | hex | oct
+    base: 'hex'       // 主数字的进制：dec | hex | oct
   };
-  var mode = 'bits';            // 'bits' | 'proto'
-  var fields = [];              // [{ name, start, end }]
-  var activeIdx = -1;           // 字段表里选中的行
-  var lastActiveIdx = -1;       // 上一次渲染时的选中行（用于"滚到可见"）
-  var hoverField = null;        // 悬停中的字段（网格 ↔ 表联动）
-  var specText = '';            // 已应用的字段定义原文
-  var rowEls = [];              // 字段表行元素
+  var fields = [];
+  var activeIdx = -1;
+  var lastActiveIdx = -1;
+  var hoverField = null;
+  var hoverIdx = -1;
+  var specText = '';
+  var rowEls = [];
   var lastError = '';
   var grid = null;
 
-  var histOpen = false;
+  var inspOpen = false;
+  var inspTab = 'fields';
+
   var histActive = -1;
   var histEls = [];
   var histTimer = 0;
@@ -111,8 +135,16 @@
 
   var specTimer = 0;
   var delTimer = 0;
+  var exprTimer = 0;
+  var exprText = '';
 
   // ---------- 数值工具 ----------
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
   function groupThousands(s) {
     return s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
@@ -147,21 +179,34 @@
     return BigInt.asUintN(width, out);
   }
 
-  /** HEX：补足位宽的十六进制串，不加空格分组——这些字符串会被原样复制，
-      夹空格粘贴到代码里就废了；太长的话大数字那边有 fitBig() 自动缩字号。 */
+  /** HEX：补足位宽的十六进制串，不加空格——这些字符串会被原样复制。 */
   function formatHex(u, width) {
     var v = store.le ? bswapWidth(u, width) : u;
     return '0x' + hexDigits(v, width);
   }
 
-  function formatDec(u, width) {
-    var v = store.signed ? BigInt.asIntN(width, u) : u;
-    return groupThousands(v.toString());
+  /** 大字 HEX：每 4 位插一个空格，只用于显示。 */
+  function formatHexBig(u, width) {
+    var s = hexDigits(store.le ? bswapWidth(u, width) : u, width);
+    s = s.replace(/\B(?=(?:.{4})+$)/g, ' ');
+    return '0x' + s;
   }
 
-  /** 八进制不补前导零：64 位补满要 22 位，全 0 时是一面零墙，读不出信息量 */
+  function decPlain(u, width) {
+    return (store.signed ? BigInt.asIntN(width, u) : u).toString();
+  }
+
+  function formatDec(u, width) {
+    return groupThousands(decPlain(u, width));
+  }
+
+  /** 八进制不补前导零：64 位补满要 22 位，全 0 时是一面零墙。 */
   function formatOct(u) {
-    return '0' + u.toString(8);
+    return '0o' + u.toString(8);
+  }
+
+  function formatOctBig(u) {
+    return '0o' + u.toString(8);
   }
 
   function formatBin(u, width) {
@@ -172,10 +217,19 @@
     return out.join(' ');
   }
 
+  function formatBinBig(u, width) {
+    return '0b' + formatBin(u, width).replace(/ /g, '');
+  }
+
+  function formatBinMeta(u, width) {
+    var s = u.toString(2);
+    while (s.length < width) { s = '0' + s; }
+    return '0b' + s.replace(/(.{4})(?=.)/g, '$1 ');
+  }
+
   var fbuf = new ArrayBuffer(8);
   var fview = new DataView(fbuf);
 
-  /** 按位宽把整数值解释成 IEEE754（32 位看 f32，64 位看 f64） */
   function readFloat(u, width) {
     if (width === 32) {
       fview.setUint32(0, Number(BigInt.asUintN(32, u)), true);
@@ -201,10 +255,13 @@
     return x.toExponential(6);
   }
 
+  function fieldColor(i) {
+    return 'var(--' + FIELD_COLORS[i % FIELD_COLORS.length] + ')';
+  }
+
   // ---------- 提示行 ----------
   function defaultHint() {
-    // 协议模式：三件事都能做，提示里要说全，否则「点值改值」没人会发现
-    return mode === 'proto' ? '点字段行选中位域 · 点值改值 · 双击复制' : '点击翻转位 · 拖动选位域';
+    return '点按翻转 · 拖动选择 · 输入即写回';
   }
 
   function findField(start, end) {
@@ -221,7 +278,6 @@
     return -1;
   }
 
-  /** 清掉上一条表达式错误。点格子、改位宽这些"手动操作"都该让错误退场。 */
   function clearError() {
     if (!lastError) { return; }
     lastError = '';
@@ -229,8 +285,9 @@
     if (el.exprInput) { el.exprInput.removeAttribute('aria-invalid'); }
   }
 
+  var flashUntil = 0;
+
   function updateHint(hoverPos) {
-    // 反馈闪烁期间先别抢状态行；但错误优先级更高，直接接管
     if (flashUntil && Date.now() < flashUntil) {
       if (!lastError) { return; }
       flashUntil = 0;
@@ -243,9 +300,9 @@
     } else if (store.sel !== null) {
       var w = store.sel.end - store.sel.start + 1;
       var v = extractRange(clampU(store.value), store.sel.start, w);
-      text = '位 ' + store.sel.start + '–' + store.sel.end + ' · ' + w + ' 位 · 0x' + hexDigits(v, w);
-      if (store.signed) { text += ' · ' + BigInt.asIntN(w, v).toString(); }
-      text += ' · 输入即写回';
+      var f = findField(store.sel.start, store.sel.end);
+      text = '位 ' + store.sel.start + '–' + store.sel.end +
+        (f ? ' · ' + f.name : '') + ' · ' + w + ' 位 · 0x' + hexDigits(v, w) + ' · Ctrl+K 输入即写回';
     } else if (hoverPos !== null && hoverPos !== undefined) {
       var nib = extractRange(clampU(store.value), Math.floor(hoverPos / 4) * 4, 4);
       text = '位 ' + hoverPos + ' · 该组 0x' + nib.toString(16).toUpperCase() + ' · 点击翻转';
@@ -259,24 +316,58 @@
     el.hint.title = text.length > 56 ? text : '';
   }
 
+  // ---------- 表达式输入 ----------
+  // 只使用插件内自定义输入框；不注册、也不读写 uTools 子输入框。
+  function syncExprInput(text) {
+    exprText = text == null ? '' : String(text);
+    if (el.exprInput && document.activeElement !== el.exprInput) {
+      el.exprInput.value = exprText;
+    }
+  }
+
+  function wireExprInput() {
+    function runExpr() {
+      clearTimeout(exprTimer);
+      return applyExpression(el.exprInput.value);
+    }
+    el.exprInput.addEventListener('input', function () {
+      exprText = el.exprInput.value;
+      clearTimeout(exprTimer);
+      exprTimer = setTimeout(runExpr, 200);
+    });
+    el.exprInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runExpr();
+        el.exprInput.select();
+      }
+    });
+  }
+
+  function focusExpr() {
+    if (!el.exprInput) { return; }
+    el.exprInput.focus();
+    try { el.exprInput.select(); } catch (err) { /* ignore */ }
+  }
+
   // ---------- 渲染 ----------
-  /** 主数字可能是一整串 64 位十进制/十六进制，字号得跟着长度缩，宁小勿裁 */
   function fitBig() {
-    var big = el.valDec;
+    var big = el.valBig;
     if (!big) { return; }
     big.style.fontSize = '';
     big.style.letterSpacing = '';
     var avail = big.clientWidth;
     var need = big.scrollWidth;
     if (!avail || need <= avail) { return; }
-    var size = Math.max(15, Math.floor(34 * avail / need));
+    var base = big.classList.contains('short') ? 34 : 28;
+    var size = Math.max(13, Math.floor(base * avail / need));
     big.style.fontSize = size + 'px';
-    big.style.letterSpacing = (size / 34 * -1.2).toFixed(2) + 'px';
+    big.style.letterSpacing = (size / base * -1.2).toFixed(2) + 'px';
   }
 
-  function formatBase(u, width) {
-    if (store.base === 'hex') { return formatHex(u, width); }
-    if (store.base === 'oct') { return formatOct(u); }
+  function formatBig(u, width) {
+    if (store.base === 'hex') { return formatHexBig(u, width); }
+    if (store.base === 'oct') { return formatOctBig(u); }
     return formatDec(u, width);
   }
 
@@ -285,142 +376,173 @@
     var scoped = store.sel !== null;
     var fw = scoped ? (store.sel.end - store.sel.start + 1) : store.width;
     var fv = scoped ? extractRange(u, store.sel.start, fw) : u;
+    var f = scoped ? findField(store.sel.start, store.sel.end) : null;
 
-    el.valDec.textContent = formatBase(fv, fw);
-    el.valDec.className = 'disp-val' + (scoped ? ' scoped' : '');
-    // 右侧三行读数永远给整值（选中一段时也一样）：主数字已经是选中段了，
-    // 这里再重复一遍选中段没有意义，对照整值反而更有用。
-    el.valHex.textContent = formatHex(u, store.width);
-
-    if (el.baseSwitch) {
-      [].forEach.call(el.baseSwitch.children, function (b) {
-        b.setAttribute('aria-pressed', String(b.dataset.base === store.base));
-      });
-    }
+    el.valBig.textContent = formatBig(fv, fw);
+    el.valBig.className = 'big' + (scoped && fw <= 8 ? ' short' : '');
 
     if (scoped) {
-      var f = findField(store.sel.start, store.sel.end);
-      el.fieldChip.hidden = false;
-      el.fieldChip.textContent = (f ? f.name + ' ' : '') + store.sel.end + ':' + store.sel.start;
+      el.eyebrow.innerHTML = '位 ' + store.sel.start + '–' + store.sel.end +
+        (f ? ' · <em>' + esc(f.name) + '</em>' : '') + ' · ' + fw + ' 位';
     } else {
-      el.fieldChip.hidden = true;
+      el.eyebrow.textContent = '整值 · ' + store.width + ' 位';
+    }
+    el.ctxActions.hidden = !scoped;
+
+    if (scoped) {
+      el.selMeta.hidden = false;
+      var dec = decPlain(fv, fw);
+      el.selMeta.textContent = (fw <= 16 ? formatBinMeta(fv, fw) + ' · DEC ' + dec : 'DEC ' + dec);
+    } else {
+      el.selMeta.hidden = true;
+      el.selMeta.textContent = '';
     }
 
-    el.valOct.textContent = formatOct(u);
-    if (el.valBin) { el.valBin.textContent = formatBin(u, store.width); }
-
-    var fl = readFloat(u, store.width);
-    if (fl) {
-      el.rowFloat.hidden = false;
-      el.floatName.textContent = fl.label;
-      el.valFloat.textContent = prettyFloat(fl.value);
-    } else {
-      el.rowFloat.hidden = true;
-    }
-
-    el.endianBtn.textContent = store.le ? 'LE' : 'BE';
-    el.endianBtn.dataset.on = store.le ? 'true' : 'false';
-
-    [].forEach.call(el.widthSeg.children, function (b) {
-      b.setAttribute('aria-pressed', String(Number(b.dataset.w) === store.width));
+    [].forEach.call(el.baseSwitch.children, function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.base === store.base));
     });
+
+    el.endianBtn.querySelector('b').textContent = store.le ? 'LE' : 'BE';
+    el.endianBtn.dataset.on = store.le ? 'true' : 'false';
+    el.widthSelect.value = String(store.width);
+    el.widthLabel.textContent = String(store.width);
     el.signedChk.checked = store.signed;
+    el.fieldsCount.textContent = String(fields.length);
 
     if (grid) {
       grid.setState({
         value: u,
         sel: store.sel,
         width: store.width,
-        field: hoverField || (activeIdx >= 0 ? fields[activeIdx] : null)
+        field: hoverField,
+        fieldColor: hoverIdx >= 0 ? fieldColor(hoverIdx) : ''
       });
     }
 
     renderFields(u);
+    renderValues(u);
     updateHint(null);
     fitBig();
+    fitWorkbenchHeight();
     scheduleFit();
   }
 
   function renderFields(u) {
     rowEls = [];
-    el.fieldBody.textContent = '';
-    el.fieldCount.textContent = fields.length ? String(fields.length) : '';
+    el.fieldList.textContent = '';
+    el.tabFieldsCount.textContent = String(fields.length);
+    el.fieldsCount.textContent = String(fields.length);
+
     if (!fields.length) {
+      el.fieldSummary.textContent = '没有字段';
+      el.coverageText.textContent = '0 / ' + store.width;
+      el.coverageBar.style.width = '0%';
+      el.overlapText.textContent = '未覆盖';
+      el.overlapText.className = '';
       var empty = document.createElement('div');
-      empty.className = 'fields-empty';
-      empty.textContent = '还没有字段定义。点右上「定义…」按行写字段，例如 opcode 15:12。';
-      el.fieldBody.appendChild(empty);
+      empty.className = 'empty';
+      empty.innerHTML = '<b>还没有字段</b>定义一段位域，网格就能按字段读值。';
+      el.fieldList.appendChild(empty);
       lastActiveIdx = -1;
+      syncActiveDescendant();
       return;
     }
+
+    var covered = 0n;
     fields.forEach(function (f, i) {
+      covered |= maskOf(fieldWidth(f)) << BigInt(f.start);
+
       var row = document.createElement('div');
-      row.className = 'field-row';
+      row.className = 'frow k' + (i % FIELD_COLORS.length + 1) + (i === activeIdx ? ' active' : '');
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', String(i === activeIdx));
       row.dataset.idx = String(i);
       row.id = 'field-row-' + i;
 
+      var dot = document.createElement('i');
+      dot.className = 'dot k' + (i % FIELD_COLORS.length + 1);
+
       var name = document.createElement('span');
-      name.className = 'field-row-name';
+      name.className = 'fn';
       name.textContent = f.name;
       name.title = f.name + ' · 位 ' + f.end + ':' + f.start;
 
       var range = document.createElement('span');
-      range.className = 'field-row-range';
+      range.className = 'fr';
       range.textContent = f.end + ':' + f.start;
 
       var val = document.createElement('span');
-      val.className = 'field-row-val';
+      val.className = 'fv';
       var w = fieldWidth(f);
       var fv = extractRange(u, f.start, w);
       val.textContent = '0x' + hexDigits(fv, w);
-      var decv = store.signed ? BigInt.asIntN(w, fv) : fv;
-      val.title = '点击改值 · ' + decv.toString() + ' · ' + w + ' 位';
-      // 位宽调小后，旧定义里超界的字段值恒为 0：标出来，别让人以为数据丢了
+      val.title = '点击改值 · ' + (store.signed ? BigInt.asIntN(w, fv) : fv).toString() + ' · ' + w + ' 位';
+
+      var copy = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      copy.setAttribute('class', 'icon f-copy');
+      copy.setAttribute('aria-hidden', 'true');
+      var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      use.setAttribute('href', '#i-copy');
+      copy.appendChild(use);
+
       if (f.end >= store.width) {
         row.classList.add('out-of-range');
         row.title = f.name + ' · 位 ' + f.end + ':' + f.start + ' · 超出当前 ' + store.width + ' 位宽';
-        val.title = decv.toString() + ' · 超出当前位宽';
+        val.title = (store.signed ? BigInt.asIntN(w, fv) : fv).toString() + ' · 超出当前位宽';
       }
 
+      row.appendChild(dot);
       row.appendChild(name);
       row.appendChild(range);
       row.appendChild(val);
-      el.fieldBody.appendChild(row);
+      row.appendChild(copy);
+      el.fieldList.appendChild(row);
       rowEls.push(row);
     });
+
+    covered &= maskOf(store.width);
+    var coveredCount = covered.toString(2).replace(/0/g, '').length;
+    var ov = PB && PB.overlaps ? PB.overlaps(fields) : [];
+    el.fieldSummary.textContent = fields.length + ' 个字段 · 覆盖 ' + coveredCount + ' 位';
+    el.coverageText.textContent = coveredCount + ' / ' + store.width;
+    el.coverageBar.style.width = Math.min(100, coveredCount / store.width * 100).toFixed(1) + '%';
+    if (ov.length) {
+      el.overlapText.textContent = ov.length + ' 处重叠';
+      el.overlapText.className = 'warn';
+    } else {
+      el.overlapText.textContent = '无重叠';
+      el.overlapText.className = 'ok';
+    }
+
     syncActiveDescendant();
     scrollActiveRowIntoView();
   }
 
-  /** 选中行滚进视野：用矩形比较而不是 scrollIntoView，避免连带滚动整个页面 */  function scrollActiveRowIntoView() {
+  function scrollActiveRowIntoView() {
     if (activeIdx < 0 || activeIdx === lastActiveIdx) { lastActiveIdx = activeIdx; return; }
     lastActiveIdx = activeIdx;
     var row = rowEls[activeIdx];
     if (!row || !row.getBoundingClientRect) { return; }
     var rb = row.getBoundingClientRect();
-    var bb = el.fieldBody.getBoundingClientRect();
-    if (rb.top < bb.top) { el.fieldBody.scrollTop -= (bb.top - rb.top); }
-    else if (rb.bottom > bb.bottom) { el.fieldBody.scrollTop += (rb.bottom - bb.bottom); }
+    var bb = el.fieldList.getBoundingClientRect();
+    if (rb.top < bb.top) { el.fieldList.scrollTop -= (bb.top - rb.top); }
+    else if (rb.bottom > bb.bottom) { el.fieldList.scrollTop += (rb.bottom - bb.bottom); }
   }
 
-  /** 只切换行的选中/悬停态，不重建行（重建会打断 hover） */
   function paintRows() {
-    var hi = hoverField ? fields.indexOf(hoverField) : -1;
     rowEls.forEach(function (row, i) {
       row.setAttribute('aria-selected', String(i === activeIdx));
-      row.style.background = (i === hi && i !== activeIdx) ? 'var(--hover)' : '';
+      row.classList.toggle('active', i === activeIdx);
+      row.classList.toggle('hovered', i === hoverIdx && i !== activeIdx);
     });
     syncActiveDescendant();
   }
 
-  /** listbox 用 aria-activedescendant 指当前行，读屏才知道焦点在哪个字段上 */
   function syncActiveDescendant() {
     if (activeIdx >= 0 && rowEls[activeIdx]) {
-      el.fieldBody.setAttribute('aria-activedescendant', 'field-row-' + activeIdx);
+      el.fieldList.setAttribute('aria-activedescendant', 'field-row-' + activeIdx);
     } else {
-      el.fieldBody.removeAttribute('aria-activedescendant');
+      el.fieldList.removeAttribute('aria-activedescendant');
     }
   }
 
@@ -430,15 +552,66 @@
       value: clampU(store.value),
       sel: store.sel,
       width: store.width,
-      field: hoverField || (activeIdx >= 0 ? fields[activeIdx] : null)
+      field: hoverField,
+      fieldColor: hoverIdx >= 0 ? fieldColor(hoverIdx) : ''
+    });
+  }
+
+  function renderValues(u) {
+    if (!el.valueTable) { return; }
+    var rows = [
+      ['DEC', formatDec(u, store.width), decPlain(u, store.width)],
+      ['HEX', formatHex(u, store.width), formatHex(u, store.width)],
+      ['OCT', formatOct(u), formatOct(u)],
+      ['BIN', formatBin(u, store.width), formatBinBig(u, store.width)]
+    ];
+    var fl = readFloat(u, store.width);
+    if (fl) {
+      rows.push([fl.label, prettyFloat(fl.value), String(fl.value)]);
+    }
+
+    el.valueTable.textContent = '';
+    rows.forEach(function (r) {
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'vrow';
+      row.dataset.copy = r[2];
+      row.dataset.label = r[0];
+      row.title = '点击复制 ' + r[0];
+      var k = document.createElement('span');
+      k.className = 'k';
+      k.textContent = r[0];
+      var v = document.createElement('span');
+      v.className = 'v';
+      v.textContent = r[1];
+      var icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      icon.setAttribute('class', 'icon');
+      var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      use.setAttribute('href', '#i-copy');
+      icon.appendChild(use);
+      row.appendChild(k);
+      row.appendChild(v);
+      row.appendChild(icon);
+      el.valueTable.appendChild(row);
     });
   }
 
   // ---------- 窗口高度 ----------
-  // 不再用常量推算内容高度：布局是「顶栏 + 左右分栏 + 字段区 + 状态行」的自然高度，
-  // 用公式推算等于把 CSS 抄一遍，改一次样式就会偏。直接量 .wrap，再把窗口设成一样高。
   var fitRaf = 0;
   var lastFit = -1;
+
+  function fitWorkbenchHeight() {
+    if (!el.workbench) { return; }
+    var rows = Math.ceil(store.width / 16);
+    var gridHeight = rows * 32 + Math.max(0, rows - 1) * 8;
+    var height = gridHeight + 28;
+    if (inspOpen) { height = Math.max(146, height); }
+    height = Math.min(220, height);
+    // 工作区高度只跟位宽和检查器开合有关；历史/字段再多也在面板内部滚动。
+    el.workbench.style.height = height + 'px';
+    var valuebarHeight = el.valuebar ? el.valuebar.getBoundingClientRect().height : 84;
+    el.content.style.height = (valuebarHeight + height) + 'px';
+  }
 
   function scheduleFit() {
     if (fitRaf) { return; }
@@ -448,33 +621,19 @@
     });
   }
 
-  function overlayBottom(node, base) {
-    if (!node || node.hidden) { return base; }
-    var r = node.getBoundingClientRect();
-    var wrap = $('.wrap');
-    var top = wrap ? wrap.getBoundingClientRect().top : 0;
-    // 浮层贴着 .wrap 顶部绝对定位，换算成相对文档内容的高度
-    return Math.max(base, Math.ceil(r.bottom - top + 10));
-  }
-
   function fitHeight() {
-    var wrap = $('.wrap');
-    if (!wrap) { return 0; }
-    // 先回到内容高度再量：上一轮写下的固定高度会把测量值钉死在旧值上
-    wrap.style.height = 'auto';
+    var app = el.app;
+    if (!app) { return 0; }
+    app.style.height = 'auto';
     document.body.style.height = 'auto';
     document.documentElement.style.height = '';
 
-    var h = Math.ceil(wrap.getBoundingClientRect().height);
+    var h = Math.ceil(app.getBoundingClientRect().height);
     if (!h) { return 0; }
-
-    // 浮层是绝对定位的，不进 .wrap 的高度，但它同样要占屏：开着浮层时按浮层底边算窗口高，
-    // 否则 body 的 overflow:hidden 会把「取消/应用」那排按钮切掉。
-    h = Math.max(h, overlayBottom(el.specPanel, h), overlayBottom(el.historyPanel, h));
+    h = Math.max(h, 220);
 
     document.body.style.height = h + 'px';
-    wrap.style.height = h + 'px';
-    // html 高度保持 auto：万一 uTools 把窗口压得比内容矮，交给页面滚动兜底，而不是把底部切掉
+    app.style.height = h + 'px';
 
     fitBig();
     if (h !== lastFit && ut && ut.setExpandHeight) {
@@ -506,7 +665,6 @@
 
   function clearSelection() {
     clearError();
-    // 用户已经手动清除选区，上一句「已应用 N 个字段」的闪示也就过时了
     cancelFlash();
     store.sel = null;
     activeIdx = -1;
@@ -519,23 +677,22 @@
     setSelection({ start: f.start, end: f.end });
   }
 
-  /** 字段值就地编辑：点值那一格变输入框，Enter 或点别处提交。
-      不能用 Esc 放弃——Esc 是 uTools 退出插件的快捷键，按下去窗口就没了。
-      写入只动这个字段的位段（writeRange），其余位保持不变。 */
+  /** 字段值就地编辑：只写这个字段的位段，其余位保持不变。
+      不能用 Esc 放弃——Esc 是 uTools 退出插件的快捷键。 */
   function startFieldEdit(idx) {
     var f = fields[idx];
-    var row = rowEls[idx];
-    if (!f || !row) { return; }
+    if (!f) { return; }
+    openInspector('fields');
     selectField(idx);
-    // selectField 会 render() 重建字段行，必须换用新行，否则输入框挂到已脱离文档的旧节点上
-    row = rowEls[idx] || row;
-    var val = row.querySelector('.field-row-val');
+    var row = rowEls[idx];
+    if (!row) { return; }
+    var val = row.querySelector('.fv');
     if (!val || val.querySelector('input')) { return; }
     var w = fieldWidth(f);
     var cur = extractRange(clampU(store.value), f.start, w);
     var inp = document.createElement('input');
     inp.type = 'text';
-    inp.className = 'field-edit';
+    inp.className = 'f-edit';
     inp.value = cur.toString();
     inp.setAttribute('aria-label', f.name + ' 的值');
     inp.spellcheck = false;
@@ -556,7 +713,6 @@
       catch (err) {
         var why = (err && err.message) || '表达式有误';
         if (quietFail) {
-          // 点别处走了就别抢焦点回来，按原值重画一遍，把错误说清楚即可
           render();
           toast('没写成：' + why, 'warn');
           return;
@@ -568,7 +724,7 @@
         return;
       }
       var next = writeRange(store.value, f.start, w, v);
-      if (next === store.value && v === cur) { render(); return; } // 没改动，静默收场
+      if (next === store.value && v === cur) { render(); return; }
       if (next !== store.value) { pushUndo(); }
       store.value = next;
       clearError();
@@ -588,11 +744,10 @@
     if (WIDTHS.indexOf(w) < 0 || w === store.width) { return; }
     clearError();
     store.width = w;
-    // 位宽变小时，越界的选区直接清掉，而不是夹到最高位——
-    // 夹出来的「位 7–7」是用户没选过的，比没有选区更误导。
     if (store.sel && store.sel.end >= w) { store.sel = null; } else { store.sel = clampSel(store.sel); }
+    hoverField = null;
+    hoverIdx = -1;
     if (activeIdx >= 0 && fields[activeIdx].end >= w) { activeIdx = -1; }
-    // 按位宽写法的字段要从新的最高位重新铺开，所以位宽变化后要重新解析
     if (specText && PB) { parseAndApply(specText, true); }
     var out = 0;
     for (var i = 0; i < fields.length; i++) { if (fields[i].end >= store.width) { out++; } }
@@ -603,7 +758,7 @@
 
   function saveSettings() {
     if (!S) { return; }
-    S.patchSettings({ width: store.width, signed: store.signed, le: store.le, mode: mode, base: store.base });
+    S.patchSettings({ width: store.width, signed: store.signed, le: store.le, base: store.base });
   }
 
   // ---------- 撤销 ----------
@@ -626,11 +781,8 @@
   }
 
   // ---------- 反馈 ----------
-  // 反馈写在状态行（#hint）里，而不是浮在窗口底部的 toast：
-  // uTools 的窗口高度等于内容高度，任何 fixed 定位的浮层最终都会压住网格或读数行。
-  // 状态行本来就有 role=status/aria-live，读屏用户也能听到，算是顺手修好可达性。
   var flashTimer = 0;
-  var flashUntil = 0;
+
   function toast(msg, tone) {
     var warn = tone === 'warn';
     el.hint.textContent = (warn ? '' : '✓ ') + msg;
@@ -644,8 +796,6 @@
     }, 1600);
   }
 
-  // 切模式时上一模式的提示（「已应用 N 个字段 · 3 个超出当前 32 位」之类）
-  // 已经不再适用于新画面，立刻收掉，别让状态行说谎
   function cancelFlash() {
     flashUntil = 0;
     clearTimeout(flashTimer);
@@ -662,9 +812,6 @@
   }
 
   // ---------- 表达式 ----------
-  // 把 v 写进 [start, start+width) 这一段，位域以外的位保持不动。
-  // 这是 BitCalc 的核心手感：选区不只是"看"，也是"改"的目标——
-  // 选中 11:8 之后输入 0xF，改的是这 4 位，其余 60 位不受影响。
   function writeRange(cur, start, width, v) {
     var u = clampU(cur);
     var span = (1n << BigInt(width)) - 1n;
@@ -676,6 +823,7 @@
   function applyExpression(text, opts) {
     var silent = !!(opts && opts.silent);
     var src = String(text == null ? '' : text).trim();
+    exprText = src;
     if (!src) {
       clearError();
       if (store.value !== 0n) { pushUndo(); }
@@ -686,7 +834,7 @@
     }
     var v;
     try {
-      v = P.parse(src);          // parser.js 出错直接 throw，中文消息可原样展示
+      v = P.parse(src);
     } catch (err) {
       lastError = err && err.message ? err.message : String(err);
       if (el.exprInput) { el.exprInput.setAttribute('aria-invalid', 'true'); }
@@ -695,6 +843,7 @@
       return false;
     }
     clearError();
+    if (el.exprInput) { el.exprInput.removeAttribute('aria-invalid'); }
     var next;
     if (store.sel) {
       var w = store.sel.end - store.sel.start + 1;
@@ -711,15 +860,6 @@
   }
 
   // ---------- 历史记录 ----------
-  /** 把外部来源（uTools 子输入框、历史恢复、指令带入）的文字同步进窗口里的输入框 */
-  function syncExprInput(text) {
-    if (!el.exprInput) { return; }
-    if (document.activeElement === el.exprInput) { return; }
-    el.exprInput.value = text == null ? '' : String(text);
-  }
-
-  // 关键：值/位宽必须在此刻快照。早先在 flush 时才读 store.value，
-  // 于是「输入 0x40 → 900ms 内按 Ctrl+Z」会把历史里的 0x40 记成撤销后的值。
   function queueHistory(expr) {
     if (!S || !expr) { return; }
     histPending = {
@@ -738,7 +878,7 @@
     if (!histPending || !S) { return; }
     S.historyPush(histPending);
     histPending = null;
-    if (histOpen) { renderHistory(); }
+    if (inspOpen && inspTab === 'history') { renderHistory(); }
   }
 
   function histValueLabel(entry) {
@@ -795,35 +935,14 @@
     }
   }
 
-  function openHistory() {
-    if (!el.specPanel.hidden) { closeSpec(); }
-    flushHistory();
-    histOpen = true;
-    el.historyPanel.hidden = false;
-    el.historyBtn.setAttribute('aria-expanded', 'true');
-    renderHistory();
-    el.historyList.focus();
-    scheduleFit();
-  }
-
-  function closeHistory() {
-    histOpen = false;
-    el.historyPanel.hidden = true;
-    el.historyBtn.setAttribute('aria-expanded', 'false');
-    scheduleFit();
-  }
-
-  function toggleHistory() {
-    if (histOpen) { closeHistory(); } else { openHistory(); }
-  }
-
   function applyHistory(idx) {
     var entry = (S ? S.historyList() : [])[idx];
     if (!entry) { return; }
+    histActive = idx;
+    paintHistory();
     syncExprInput(entry.expr);
     var ok = applyExpression(entry.expr, { silent: true });
     if (!ok) {
-      // 表达式现在解析不了了（比如输入法残留），退回记录时的值，至少不丢数据
       lastError = '';
       if (store.value !== clampU(BigInt(entry.value || '0'))) { pushUndo(); }
       store.value = clampU(BigInt(entry.value || '0'));
@@ -831,7 +950,54 @@
       render();
     }
     toast('已恢复 ' + entry.expr);
-    closeHistory();
+  }
+
+  // ---------- 检查器 ----------
+  function setInspector(open) {
+    inspOpen = !!open;
+    el.inspector.hidden = !inspOpen;
+    el.fieldsBtn.classList.toggle('on', inspOpen && inspTab === 'fields');
+    el.historyBtn.setAttribute('aria-expanded', String(inspOpen && inspTab === 'history'));
+    fitWorkbenchHeight();
+    scheduleFit();
+    if (inspOpen) {
+      requestAnimationFrame(function () { pushGridState(); });
+    }
+  }
+
+  function setInspTab(tab) {
+    if (['fields', 'values', 'history'].indexOf(tab) < 0) { return; }
+    inspTab = tab;
+    [].forEach.call(el.inspTabs.children, function (b) {
+      var on = b.dataset.tab === tab;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    el.inspFields.hidden = tab !== 'fields';
+    el.inspValues.hidden = tab !== 'values';
+    el.inspHistory.hidden = tab !== 'history';
+    el.fieldsBtn.classList.toggle('on', inspOpen && tab === 'fields');
+    el.historyBtn.setAttribute('aria-expanded', String(inspOpen && tab === 'history'));
+    if (tab === 'history') { renderHistory(); }
+    if (tab === 'values') { renderValues(clampU(store.value)); }
+    scheduleFit();
+  }
+
+  function openInspector(tab) {
+    setInspector(true);
+    setInspTab(tab || 'fields');
+  }
+
+  function openHistory() {
+    if (!el.specPanel.hidden) { closeSpec(); }
+    flushHistory();
+    openInspector('history');
+    el.historyList.focus();
+  }
+
+  function toggleHistory() {
+    if (inspOpen && inspTab === 'history') { setInspector(false); return; }
+    openHistory();
   }
 
   // ---------- 字段定义 ----------
@@ -840,7 +1006,6 @@
     el.specMsg.className = 'spec-msg' + (kind ? ' ' + kind : '');
   }
 
-  /** 边写边校验：错误一句话讲清（行号 + 原因），能应用时顺带报字段数与占位 */
   function validateSpec(text) {
     if (!PB) {
       el.specText.setAttribute('aria-invalid', 'true');
@@ -862,8 +1027,6 @@
       setSpecMsg('还没有字段：每行一个，例如 opcode 15:12', 'ok');
       return true;
     }
-    // 写超了就是错误：位段超出当前位宽时不肯应用，并直接告诉用户该切到多少位。
-    // 不这么做的话，定义能"成功"存下来，字段却永远读 0，看起来像数据丢了。
     var wide = null;
     for (var i = 0; i < list.length; i++) {
       if (list[i].end >= store.width) { wide = list[i]; break; }
@@ -901,7 +1064,6 @@
       setSpecMsg('第 ' + e.line + ' 行：' + e.message + more, 'error');
       return false;
     }
-    // 用户手点「应用」时再兜一层：边写边校验只是提示，真正落库前必须拦住
     if (!quiet) {
       var wide = null;
       (res.fields || []).forEach(function (f) {
@@ -915,6 +1077,8 @@
       }
     }
     fields = res.fields || [];
+    hoverField = null;
+    hoverIdx = -1;
     activeIdx = store.sel ? fields.indexOf(findField(store.sel.start, store.sel.end)) : -1;
     specText = text;
     if (S) { S.setSpec(text); }
@@ -992,6 +1156,7 @@
     validateSpec(s.spec);
     if (parseAndApply(s.spec, true)) {
       render();
+      openInspector('fields');
       toast('已载入方案「' + name + '」');
     } else {
       toast('方案有错误，未应用', 'warn');
@@ -1019,7 +1184,7 @@
 
   // ---------- 字段编辑器开合 ----------
   function openSpec() {
-    if (histOpen) { closeHistory(); }
+    closeMenus();
     el.specPanel.hidden = false;
     el.specText.value = specText || (S ? S.getSpec() : '') || '';
     renderSchemes();
@@ -1028,46 +1193,51 @@
     el.specText.focus();
     var n = el.specText.value.length;
     try { el.specText.setSelectionRange(n, n); } catch (err) { /* 忽略 */ }
-    scheduleFit();
   }
 
-  function closeSpec() {
+  function closeSpec(refocus) {
     el.specPanel.hidden = true;
     el.specText.removeAttribute('aria-invalid');
     hideSchemeForm();
-    scheduleFit();
+    if (refocus !== false) { focusExpr(); }
   }
 
-  function setMode(next) {
-    if (next !== 'bits' && next !== 'proto') { return; }
-    mode = next;
-    cancelFlash();
-    [].forEach.call(el.modeTabs.children, function (b) {
-      b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
-    });
-    el.fieldPanel.hidden = mode !== 'proto';
-    if (mode === 'proto') {
-      if (!specText && S) { specText = S.getSpec(); }
-      if (specText && PB) { parseAndApply(specText, true); }
-      render();
-      if (!fields.length && PB) { openSpec(); }
-    } else {
-      closeSpec();
-      render();
+  // ---------- 菜单 ----------
+  function closeMenus() {
+    el.displayMenu.hidden = true;
+    el.moreMenu.hidden = true;
+    el.displayBtn.setAttribute('aria-expanded', 'false');
+    el.moreBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleMenu(btn, menu) {
+    var open = menu.hidden;
+    closeMenus();
+    if (open) {
+      menu.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
     }
-    saveSettings();
   }
 
   // ---------- 事件 ----------
   function wire() {
-    el.modeTabs.addEventListener('click', function (e) {
-      var b = e.target.closest('button[data-mode]');
-      if (b) { setMode(b.dataset.mode); }
+    el.widthSelect.addEventListener('change', function () {
+      setWidth(Number(el.widthSelect.value));
     });
 
-    el.widthSeg.addEventListener('click', function (e) {
-      var b = e.target.closest('button[data-w]');
-      if (b) { setWidth(Number(b.dataset.w)); }
+    el.fieldsBtn.addEventListener('click', function () {
+      closeMenus();
+      if (inspOpen && inspTab === 'fields') { setInspector(false); }
+      else { openInspector('fields'); }
+    });
+
+    el.displayBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleMenu(el.displayBtn, el.displayMenu);
+    });
+    el.moreBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleMenu(el.moreBtn, el.moreMenu);
     });
 
     el.signedChk.addEventListener('change', function () {
@@ -1082,54 +1252,130 @@
       store.le = !store.le;
       saveSettings();
       render();
+      el.endianBtn.querySelector('b').textContent = store.le ? 'LE' : 'BE';
+      closeMenus();
     });
 
-    el.clearBtn.addEventListener('click', clearSelection);
-    el.fieldChip.addEventListener('click', clearSelection);
-
-    el.valDec.addEventListener('click', function () {
-      var u = clampU(store.value);
-      var scoped = store.sel !== null;
-      var w = scoped ? store.sel.end - store.sel.start + 1 : store.width;
-      var v = scoped ? extractRange(u, store.sel.start, w) : u;
-      // 复制的是眼前这串字符：切到 HEX 时还复制十进制会让人以为复制错了
-      if (store.base === 'hex') { copy(formatHex(v, w), 'HEX'); return; }
-      if (store.base === 'oct') { copy(formatOct(v), 'OCT'); return; }
-      copy((store.signed ? BigInt.asIntN(w, v) : v).toString(), 'DEC');
+    el.historyBtn.addEventListener('click', function () {
+      closeMenus();
+      toggleHistory();
     });
 
-    if (el.baseSwitch) {
-      el.baseSwitch.addEventListener('click', function (e) {
-        var b = e.target.closest('button[data-base]');
-        if (!b || BASES.indexOf(b.dataset.base) < 0) { return; }
-        store.base = b.dataset.base;
-        saveSettings();
-        render();
-      });
-    }
-
-    el.valHex.addEventListener('click', function () {
-      var u = clampU(store.value);
-      var scoped = store.sel !== null;
-      var w = scoped ? store.sel.end - store.sel.start + 1 : store.width;
-      var v = scoped ? extractRange(u, store.sel.start, w) : u;
-      copy(formatHex(v, w), 'HEX');
+    el.undoBtn.addEventListener('click', function () { closeMenus(); undo(); });
+    el.clearSelBtn.addEventListener('click', function () { closeMenus(); clearSelection(); });
+    el.copyAllBtn.addEventListener('click', function () {
+      closeMenus();
+      copy(formatHex(clampU(store.value), store.width), 'HEX 整值');
     });
 
-    el.readouts.addEventListener('click', function (e) {
-      var row = e.target.closest('.row');
-      if (!row || row.hidden) { return; }
-      var u = clampU(store.value);
-      if (row.dataset.base === 'oct') { copy(formatOct(u), 'OCT'); }
-      if (row.dataset.base === 'bin') { copy(formatBin(u, store.width).replace(/ /g, ''), 'BIN'); }
-      if (row.dataset.base === 'float') {
-        var fl = readFloat(u, store.width);
-        if (fl) { copy(String(fl.value), fl.label); }
+    document.addEventListener('pointerdown', function (e) {
+      if (!e.target.closest || !e.target.closest('.menu-wrap')) { closeMenus(); }
+    });
+
+    if (el.exprInput) { wireExprInput(); }
+
+    el.ctxEdit.addEventListener('click', function () {
+      if (activeIdx >= 0) { startFieldEdit(activeIdx); }
+      else { focusExpr(); toast('在输入框输入表达式，写回选中段'); }
+    });
+    el.ctxClear.addEventListener('click', clearSelection);
+    el.copyMain.addEventListener('click', function () { copyMainValue(); });
+    el.valBig.addEventListener('click', function () { copyMainValue(); });
+
+    el.baseSwitch.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-base]');
+      if (!b || BASES.indexOf(b.dataset.base) < 0) { return; }
+      store.base = b.dataset.base;
+      saveSettings();
+      render();
+    });
+
+    el.inspTabs.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-tab]');
+      if (b) { openInspector(b.dataset.tab); }
+    });
+
+    el.valueTable.addEventListener('click', function (e) {
+      var row = e.target.closest('.vrow');
+      if (row) { copy(row.dataset.copy, row.dataset.label); }
+    });
+
+    el.defineFields.addEventListener('click', openSpec);
+    el.addField.addEventListener('click', openSpec);
+
+    el.fieldList.addEventListener('click', function (e) {
+      var row = e.target.closest('.frow');
+      if (!row) { return; }
+      var idx = Number(row.dataset.idx);
+      var f = fields[idx];
+      if (!f) { return; }
+      if (e.target.closest('.f-copy')) {
+        var w = fieldWidth(f);
+        var v = extractRange(clampU(store.value), f.start, w);
+        copy('0x' + hexDigits(v, w), f.name);
+        return;
+      }
+      if (e.target.closest('.fv')) {
+        startFieldEdit(idx);
+        return;
+      }
+      if (store.sel && store.sel.start === f.start && store.sel.end === f.end) {
+        clearSelection();
+      } else {
+        selectField(idx);
       }
     });
 
-    // ---------- 历史记录 ----------
-    el.historyBtn.addEventListener('click', toggleHistory);
+    el.fieldList.addEventListener('dblclick', function (e) {
+      if (e.target.closest('.fv') || e.target.closest('.f-copy')) { return; }
+      var row = e.target.closest('.frow');
+      if (!row) { return; }
+      var f = fields[Number(row.dataset.idx)];
+      if (!f) { return; }
+      var w = fieldWidth(f);
+      var v = extractRange(clampU(store.value), f.start, w);
+      copy('0x' + hexDigits(v, w), f.name);
+    });
+
+    el.fieldList.addEventListener('pointerover', function (e) {
+      var row = e.target.closest('.frow');
+      if (!row) { return; }
+      var idx = Number(row.dataset.idx);
+      var f = fields[idx];
+      if (!f || hoverField === f) { return; }
+      hoverField = f;
+      hoverIdx = idx;
+      paintRows();
+      pushGridState();
+    });
+
+    el.fieldList.addEventListener('pointerleave', function () {
+      hoverField = null;
+      hoverIdx = -1;
+      paintRows();
+      pushGridState();
+    });
+
+    el.fieldList.addEventListener('keydown', function (e) {
+      if (!fields.length) { return; }
+      var k = e.key;
+      if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Home' || k === 'End') {
+        e.preventDefault();
+        var cur = activeIdx;
+        if (k === 'ArrowDown') { cur = Math.min(fields.length - 1, cur + 1); }
+        else if (k === 'ArrowUp') { cur = Math.max(0, cur - 1); }
+        else if (k === 'Home') { cur = 0; }
+        else { cur = fields.length - 1; }
+        selectField(cur);
+      } else if (k === 'F2') {
+        e.preventDefault();
+        if (activeIdx >= 0) { startFieldEdit(activeIdx); }
+      } else if (k === 'Enter' || k === ' ') {
+        e.preventDefault();
+        selectField(activeIdx >= 0 ? activeIdx : 0);
+      }
+    });
+
     el.historyClear.addEventListener('click', function () {
       if (!S) { return; }
       S.historyClear();
@@ -1157,27 +1403,14 @@
       else if (e.key === 'Enter') { e.preventDefault(); applyHistory(histActive); }
     });
 
-    // 点浮层以外的地方关掉它（uTools 里点子输入框也算"外面"）
-    document.addEventListener('pointerdown', function (e) {
-      if (!histOpen) { return; }
-      if (el.historyPanel.contains(e.target) || el.historyBtn.contains(e.target)) { return; }
-      closeHistory();
-    });
-
-    // ---------- 字段定义 ----------
-    el.fieldEditBtn.addEventListener('click', openSpec);
-    el.fieldPanel.querySelector('.fields-head').addEventListener('click', function (e) {
-      if (e.target.closest('button')) { return; }
-      openSpec();
-    });
-
     el.specCancel.addEventListener('click', closeSpec);
+    el.specClose.addEventListener('click', closeSpec);
     el.specSave.addEventListener('click', function () {
       if (parseAndApply(el.specText.value, false)) {
         closeSpec();
+        openInspector('fields');
         if (!fields.length) { toast('已清空字段'); return; }
         var ov = PB && PB.overlaps ? PB.overlaps(fields).length : 0;
-        // 重叠不阻止应用（有人故意用重叠字段看多个视图），但必须说一句，否则重叠的位会悄悄算两遍
         if (ov) { toast('已应用 ' + fields.length + ' 个字段 · ' + ov + ' 处重叠', 'warn'); }
         else { toast('已应用 ' + fields.length + ' 个字段'); }
       }
@@ -1189,8 +1422,6 @@
       el.specHelpToggle.setAttribute('aria-expanded', String(open));
     });
 
-    // 示例：只填编辑框，不直接生效。用户要按「应用」才替换现有字段，
-    // 按「取消」则原文与被应用的字段都不受影响（textarea 每次打开都从 specText 重填）。
     el.specSample.addEventListener('click', function () {
       el.specText.value = [
         '# 示例：一条 8 位指令，可随意改位段后点「应用」',
@@ -1207,7 +1438,6 @@
       specTimer = setTimeout(function () { validateSpec(el.specText.value); }, 180);
     });
 
-    // ---------- 方案 ----------
     el.schemeSelect.addEventListener('change', syncSchemeButtons);
     el.schemeLoad.addEventListener('click', loadScheme);
     el.schemeSave.addEventListener('click', showSchemeForm);
@@ -1218,75 +1448,6 @@
       if (e.key === 'Enter') { e.preventDefault(); commitScheme(); }
     });
 
-    // ---------- 字段表 ----------
-    el.fieldBody.addEventListener('click', function (e) {
-      var row = e.target.closest('.field-row');
-      if (!row) { return; }
-      var idx = Number(row.dataset.idx);
-      var f = fields[idx];
-      if (!f) { return; }
-      // 点「值」那一格 = 就地改值；点名字/位段 = 选中（两件事在同一行上，位置区分最省认知）
-      if (e.target.closest('.field-row-val')) {
-        startFieldEdit(idx);
-        return;
-      }
-      if (store.sel && store.sel.start === f.start && store.sel.end === f.end) {
-        clearSelection();
-      } else {
-        selectField(idx);
-      }
-    });
-
-    el.fieldBody.addEventListener('dblclick', function (e) {
-      if (e.target.closest('.field-row-val')) { return; } // 值那一格归「改值」用
-      var row = e.target.closest('.field-row');
-      if (!row) { return; }
-      var f = fields[Number(row.dataset.idx)];
-      if (!f) { return; }
-      var w = fieldWidth(f);
-      var v = extractRange(clampU(store.value), f.start, w);
-      copy('0x' + hexDigits(v, w), f.name);
-    });
-
-    el.fieldBody.addEventListener('pointerover', function (e) {
-      var row = e.target.closest('.field-row');
-      if (!row) { return; }
-      var f = fields[Number(row.dataset.idx)];
-      if (!f || hoverField === f) { return; }
-      hoverField = f;
-      paintRows();
-      pushGridState();
-    });
-
-    el.fieldBody.addEventListener('pointerleave', function () {
-      hoverField = null;
-      paintRows();
-      pushGridState();
-    });
-
-    el.fieldBody.addEventListener('keydown', function (e) {
-      if (!fields.length) { return; }
-      var k = e.key;
-      if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Home' || k === 'End') {
-        e.preventDefault();
-        var cur = activeIdx;
-        if (k === 'ArrowDown') { cur = Math.min(fields.length - 1, cur + 1); }
-        else if (k === 'ArrowUp') { cur = Math.max(0, cur - 1); }
-        else if (k === 'Home') { cur = 0; }
-        else { cur = fields.length - 1; }
-        selectField(cur);
-      } else if (k === 'F2') {
-        e.preventDefault();
-        if (activeIdx >= 0) { startFieldEdit(activeIdx); }
-      } else if (k === 'Enter' || k === ' ') {
-        e.preventDefault();
-        selectField(activeIdx >= 0 ? activeIdx : 0);
-      }
-    });
-
-    // ---------- 全局快捷键 ----------
-    // 注意：Esc 归 uTools（它是退出插件），窗口里一律不接 Esc。
-    // 早先用 Esc 清选区/关浮层，结果用户一按插件就退了，看起来像"按 Esc 崩溃"。
     document.addEventListener('keydown', function (e) {
       var t = e.target;
       var tag = t && t.tagName ? t.tagName : '';
@@ -1296,62 +1457,42 @@
         var k = String(e.key || '').toLowerCase();
         if (k === 'h') { e.preventDefault(); toggleHistory(); return; }
         if (k === 'z' && !inField) { e.preventDefault(); undo(); return; }
+        if (k === 'k') { e.preventDefault(); focusExpr(); return; }
         if (k === 'enter' && t === el.specText) { e.preventDefault(); el.specSave.click(); return; }
       }
 
-      // Delete / Backspace 取消选区：替掉原来的 Esc，且这两个键在 uTools 里没有别的含义
       if ((e.key === 'Delete' || e.key === 'Backspace') && !inField && store.sel) {
         e.preventDefault();
         clearSelection();
       }
     });
 
-    // 点历史浮层外面收起它（浮层上没有关闭按钮，Esc 又不能用）
-    document.addEventListener('pointerdown', function (e) {
-      if (!histOpen) { return; }
-      if (el.historyPanel.contains(e.target) || el.historyBtn.contains(e.target)) { return; }
-      closeHistory();
+    window.addEventListener('resize', function () {
+      scheduleFit();
+      pushGridState();
     });
+  }
 
-    // 表达式输入常驻在窗口里：Enter / 「计算」立刻求值；打字时 200ms 防抖跟随。
-    // 早先只靠 uTools 子输入框（搜索栏），换到新布局后用户找不到在哪算。
-    var exprTimer = 0;
-    function runExpr() {
-      clearTimeout(exprTimer);
-      return applyExpression(el.exprInput.value);
-    }
-    el.exprInput.addEventListener('input', function () {
-      clearTimeout(exprTimer);
-      exprTimer = setTimeout(runExpr, 200);
-    });
-    el.exprInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        runExpr();
-        el.exprInput.select();
-      }
-    });
-    el.exprGo.addEventListener('click', function () {
-      runExpr();
-      el.exprInput.focus();
-    });
-
-    window.addEventListener('resize', function () { scheduleFit(); });
+  function copyMainValue() {
+    var u = clampU(store.value);
+    var scoped = store.sel !== null;
+    var w = scoped ? (store.sel.end - store.sel.start + 1) : store.width;
+    var v = scoped ? extractRange(u, store.sel.start, w) : u;
+    if (store.base === 'hex') { copy(formatHex(v, w), 'HEX'); return; }
+    if (store.base === 'oct') { copy(formatOct(v), 'OCT'); return; }
+    copy(decPlain(v, w), 'DEC');
   }
 
   // ---------- 进入插件 ----------
   function handleEnter(action) {
     if (!action) { return; }
-    // 功能指令（type = "text"）的 payload 是命令名本身（就是 "bitcalc"）。
-    // 早先这里不分类型，一律把 payload 当表达式求值，于是从关键字进入会报
-    // 「未知函数或标识符 "bitcalc"（位置 0）」——这是本次修的第一个 bug。
     if (action.type === 'text') { return; }
-    // 图片 / 多文件拖入拿不到能算的东西，直接忽略，别在状态行里留下一句莫名其妙的报错
     if (action.type === 'img' || action.type === 'files') { return; }
     var payload = action.payload == null ? '' : String(action.payload).trim();
     if (!payload) { return; }
     syncExprInput(payload);
     applyExpression(payload);
+    focusExpr();
   }
 
   // ---------- 启动 ----------
@@ -1378,13 +1519,28 @@
         store.value = clampU(store.value ^ (1n << BigInt(pos)));
         render();
       },
+      onSetBit: function (pos, bit) {
+        var mask = 1n << BigInt(pos);
+        var cur = clampU(store.value);
+        var on = (cur & mask) !== 0n;
+        if (on === !!bit) { return; }
+        clearError();
+        pushUndo();
+        store.value = bit ? (cur | mask) : (cur & ~mask);
+        render();
+      },
       onCommitRange: function (start, end) {
         setSelection({ start: start, end: end });
       },
       onClearSelection: clearSelection,
       onHoverBit: function (pos) {
         if (pos === null) {
-          if (hoverField) { hoverField = null; paintRows(); pushGridState(); }
+          if (hoverField) {
+            hoverField = null;
+            hoverIdx = -1;
+            paintRows();
+            pushGridState();
+          }
           updateHint(null);
           return;
         }
@@ -1392,20 +1548,13 @@
         var f = idx >= 0 ? fields[idx] : null;
         if (f !== hoverField) {
           hoverField = f;
+          hoverIdx = idx;
           paintRows();
           pushGridState();
         }
         updateHint(pos);
       }
     });
-
-    // 浏览器预览：#utools 假装自己在 uTools 里（隐藏调试输入框、按内容高度定窗口）
-    var preview = location.hash.indexOf('utools') >= 0;
-    if (ut || preview) {
-      document.body.classList.remove('no-utools');
-    } else {
-      document.body.classList.add('no-utools');
-    }
 
     if (ut) {
       if (ut.onPluginEnter) {
@@ -1417,26 +1566,21 @@
       if (ut.onPluginOut) {
         ut.onPluginOut(function () {
           flushHistory();
-          if (histOpen) { closeHistory(); }
-          if (!el.specPanel.hidden) { closeSpec(); }
+          if (!el.specPanel.hidden) { closeSpec(false); }
         });
-      }
-      if (ut.setSubInput) {
-        ut.setSubInput(function (action) {
-          var text = action && action.text;
-          syncExprInput(text);
-          applyExpression(text);
-        }, '表达式与数值：0xFF、1<<8 | 3、pow(2,16)', true);
       }
     }
 
-    var startMode = settings.mode === 'proto' || location.hash.indexOf('proto') >= 0 ? 'proto' : 'bits';
-    setMode(startMode);
+    setInspector(fields.length > 0);
+    setInspTab('fields');
     render();
     scheduleFit();
 
     if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
-      document.fonts.ready.then(function () { scheduleFit(); });
+      document.fonts.ready.then(function () {
+        scheduleFit();
+        pushGridState();
+      });
     }
   }
 

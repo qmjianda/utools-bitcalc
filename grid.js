@@ -16,7 +16,7 @@
  * 位宽（8/16/32/64）决定网格实际画多少格：只画当前位宽需要的位，不画"灰掉的其余位"。
  * 理由：64 位时自觉是画布，8 位时那 56 个灰零就是纯噪音；宁可让窗口跟着变矮。
  *
- * 纯函数（bitPosAt / computeMask / extractField / normalizeRange）不依赖 DOM，
+ * 纯函数（bitPosAt / computeMask / extractField / normalizeRange / rangeSegments）不依赖 DOM，
  * 可在 Node 中 require 后单测；init() 只在浏览器中挂载 DOM 与事件。
  */
 (function (root, factory) {
@@ -74,6 +74,29 @@
     return { cols: cols, rows: Math.ceil(width / cols) };
   }
 
+  /**
+   * 把连续位段拆成「每行一段」的视觉区间。
+   * 位号是跨行连续的，但几何不是：0–16 在 32/64 位下跨越两行，
+   * 必须分别框住「16」和「15–0」，不能用两个端点画一个又高又窄的矩形。
+   * @returns {Array<{row:number,start:number,end:number}>} 按位号从低到高
+   */
+  function rangeSegments(start, end, width) {
+    var w = width || NBITS;
+    var lo = Math.max(0, Math.min(start, end));
+    var hi = Math.min(w - 1, Math.max(start, end));
+    if (hi < lo) { return []; }
+    var cols = Math.min(MAX_COLS, w);
+    var out = [];
+    for (var pos = lo; pos <= hi;) {
+      var row = Math.floor((w - 1 - pos) / cols);
+      var rowHigh = w - 1 - row * cols;
+      var segHigh = Math.min(hi, rowHigh);
+      out.push({ row: row, start: pos, end: segHigh });
+      pos = segHigh + 1;
+    }
+    return out;
+  }
+
   // ---------- DOM 渲染与交互（仅浏览器） ----------
 
   /**
@@ -102,13 +125,16 @@
     var onCommitRange = opts.onCommitRange || function () {};
     var onClearSelection = opts.onClearSelection || function () {};
     var onHoverBit = opts.onHoverBit || function () {};
+    var onSetBit = opts.onSetBit || function (pos, bit) { if (bit) { onToggleBit(pos); } };
 
-    // field：协议解析模式下当前高亮的字段范围 {start,end}|null（与 sel 独立，
-    // 用于「悬停字段表某行 → 网格里对应 bit 段亮起」的双向联动）
-    var state = { value: 0n, sel: null, width: NBITS, field: null };
+    // field：协议字段悬停时的高亮范围 {start,end}|null；字段颜色由 fieldColor 传入
+    // （不把字段色常驻在格子上，避免 4bit 区域变花）
+    var state = { value: 0n, sel: null, width: NBITS, field: null, fieldColor: '' };
     var drag = null;       // { pointerId, startPos, currentPos, startX, startY, moved }
     var hoverNib = -1;     // 当前悬停的 nibble 序号，-1 表示无
     var builtWidth = 0;    // 已建好的网格位宽，0 表示尚未构建
+    var cursor = -1;       // 键盘光标位号，-1 表示网格未聚焦
+    var anchor = -1;       // Shift+方向键的锚点
 
     var gridEl = document.createElement('div');
     gridEl.className = 'grid';
@@ -116,71 +142,74 @@
 
     var cells = [];    // cells[pos] = 格子元素
     var valSpans = []; // valSpans[pos] = 位值元素
-    var selFrame = null;   // 选中位域的实线外框
-    var fieldFrame = null;  // 协议模式字段的虚线外框
+    var selFrames = [];    // 选中位域：每行一个实线外框
+    var dragFrames = [];   // 拖动预览：每行一个虚线外框
     var frameRaf = 0;
 
     // ---- 按位宽重建格子 ----
-    // 轨道编号（1 基）：每 4 格一组，组间由 10px 的 spacer 轨道分隔。
-    // 列 c 的轨道 = c + 1 + floor(c / 4)；行 r 的轨道 = r + 1。
+    // 每个 nibble 是 4 格，nibble 内 2px、nibble 间 8px，字节边界再多 5px。
+    // 这些间距全在 CSS 里；这里只负责行/组/格的 DOM 结构。
     function build(width) {
       var shape = gridShape(width);
       builtWidth = width;
       cells = new Array(width);
       valSpans = new Array(width);
       hoverNib = -1;
+      if (cursor >= width) { cursor = width - 1; }
+      if (anchor >= width) { anchor = -1; }
 
-      var tracks = [];
-      for (var g = 0; g < shape.cols / 4; g++) {
-        if (g > 0) { tracks.push('10px'); }
-        // minmax(0, 1fr) 而不是 1fr：列宽可以压到比内容还窄，
-        // 否则 16 列的最小内容宽（约 450px）会把网格顶出 434px 的舞台，
-        // 最后一列压到右侧分栏线上。窄了以后字号不变，只是格子更紧凑。
-        tracks.push('repeat(4, minmax(0, 1fr))');
-      }
-      gridEl.style.gridTemplateColumns = tracks.join(' ');
-      // 每位给一个宽度上限（约 36px），整片网格的 max-width 按列数算：
-      // 8 位时只有 8 列，若不封顶会被 1fr 拉成一排宽条；64 位时上限还要让位于容器实宽。
-      var groups = Math.ceil(shape.cols / 4);
-      gridEl.style.maxWidth =
-        'min(100%, ' + (shape.cols * 36 + Math.max(0, groups - 1) * 10 + (shape.cols - 1) * 3) + 'px)';
+      var nibbles = Math.ceil(shape.cols / 4);
+      // 8 位时不要被 1fr 拉成一排巨格；64 位时上限大于容器，自然让位于容器实宽。
+      // 与 CSS 的 2px 组内 / 8px 组间 / 5px 字节间距对应。
+      var maxW = shape.cols * 38 + nibbles * 3 * 2 + Math.max(0, nibbles - 1) * 8 + (nibbles >= 3 ? 5 : 0);
+      gridEl.style.maxWidth = maxW + 'px';
+      // 与 style.css 的 32px 格高 / 8px 行距对应：让画布随位宽收紧，不再固定留一大块空白。
+      // 变量要设在画布（网格的祖先）上，设在 #grid 上不会被 .canvas 的 min-height 继承。
+      var canvasEl = rootEl.closest ? rootEl.closest('.canvas') : null;
+      (canvasEl || rootEl).style.setProperty('--grid-height', (shape.rows * 32 + Math.max(0, shape.rows - 1) * 8) + 'px');
 
       gridEl.textContent = '';
-      // 清空把两个外框一起删了，置空后下一帧 placeFrame 会重建
-      selFrame = null;
-      fieldFrame = null;
+      selFrames = [];
+      dragFrames = [];
       var frag = document.createDocumentFragment();
       for (var r = 0; r < shape.rows; r++) {
-        for (var c = 0; c < shape.cols; c++) {
-          var pos = bitPosAt(r, c, width);
-          var cell = document.createElement('div');
-          cell.className = 'cell';
-          cell.dataset.pos = String(pos);
-          cell.style.gridRow = String(r + 1);
-          cell.style.gridColumn = String(c + 1 + Math.floor(c / 4));
+        var rowEl = document.createElement('div');
+        rowEl.className = 'bitrow';
+        for (var n = 0; n < nibbles; n++) {
+          var nibEl = document.createElement('div');
+          nibEl.className = 'nibble';
+          for (var j = 0; j < 4; j++) {
+            var c = n * 4 + j;
+            if (c >= shape.cols) { break; }
+            var pos = bitPosAt(r, c, width);
+            var cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.pos = String(pos);
 
-          var valSpan = document.createElement('span');
-          valSpan.className = 'cell-val';
-          valSpan.textContent = '0';
-          cell.appendChild(valSpan);
+            var valSpan = document.createElement('span');
+            valSpan.className = 'val';
+            valSpan.textContent = '0';
+            cell.appendChild(valSpan);
 
-          var numSpan = document.createElement('span');
-          numSpan.className = 'cell-no';
-          numSpan.textContent = String(pos);
-          cell.appendChild(numSpan);
+            var numSpan = document.createElement('span');
+            numSpan.className = 'bit';
+            numSpan.textContent = String(pos);
+            cell.appendChild(numSpan);
 
-          frag.appendChild(cell);
-          cells[pos] = cell;
-          valSpans[pos] = valSpan;
+            nibEl.appendChild(cell);
+            cells[pos] = cell;
+            valSpans[pos] = valSpan;
+          }
+          rowEl.appendChild(nibEl);
         }
+        frag.appendChild(rowEl);
       }
       gridEl.appendChild(frag);
     }
 
-    // ---- 位域外框 ----
-    // 一段位域里既有 1 又有 0 时，实心蓝（1）和淡蓝（0）读起来是两种东西；
-    // 外面套一个框，「这几位是一个整体」就变成一条几何事实，不用解释。
-    // 两个框：选中的位域（实线）、协议模式里悬停/激活的字段（虚线）。
+    // ---- 选中位域外框 ----
+    // 一段位域里既有 1 又有 0 时，实心深色（1）和浅色（0）读起来是两种东西；
+    // 按行分别套框，「这些位是一个整体」就是一条几何事实；跨行也不会画成端点矩形。
     function makeFrame(cls) {
       var el = document.createElement('div');
       el.className = cls;
@@ -209,16 +238,20 @@
       el.hidden = false;
     }
 
-    function placeFrame() {
-      if (!selFrame) { selFrame = makeFrame('sel-frame'); }
-      if (!fieldFrame) { fieldFrame = makeFrame('field-frame'); }
-      var fld = state.field;
-      // 字段和选区是同一位域时，只画实线框，别叠两层
-      if (fld && state.sel && fld.start === state.sel.start && fld.end === state.sel.end) {
-        fld = null;
+    function syncFrames(frames, cls, ranges) {
+      while (frames.length < ranges.length) {
+        frames.push(makeFrame(cls));
       }
-      placeOn(selFrame, state.sel);
-      placeOn(fieldFrame, fld);
+      for (var i = 0; i < frames.length; i++) {
+        placeOn(frames[i], i < ranges.length ? ranges[i] : null);
+      }
+    }
+
+    function placeFrame() {
+      var sel = state.sel ? rangeSegments(state.sel.start, state.sel.end, state.width) : [];
+      var preview = drag ? rangeSegments(drag.startPos, drag.currentPos, state.width) : [];
+      syncFrames(selFrames, 'sel-frame', sel);
+      syncFrames(dragFrames, 'drag-frame', preview);
     }
 
     function scheduleFrame() {
@@ -229,13 +262,48 @@
       });
     }
 
-    // ---- 命中检测：读指针所在格子的 data-pos ----
-    function cellAtPoint(x, y) {
-      // elementFromPoint 可能返回格子内部子元素（如位号 label），closest 回退到格子
-      var el = document.elementFromPoint(x, y);
-      var cell = el && el.closest ? el.closest('.cell') : null;
-      if (!cell || !gridEl.contains(cell)) { return null; }
-      return parseInt(cell.dataset.pos, 10);
+    // ---- 命中检测：优先取指针下的格子；落在 3/4、字节或行间隙时按方向吸附 ----
+    // 只按 elementFromPoint 会在 bit3↔bit4 的组间隙、以及跨行拖动松手时漏掉，
+    // 用户看到的就是“选择失败”。间隙兜底把空隙也纳入拖选手势。
+    function cellAtPoint(x, y, bias) {
+      var hit = document.elementFromPoint(x, y);
+      var cell = hit && hit.closest ? hit.closest('.cell') : null;
+      if (cell && gridEl.contains(cell)) { return parseInt(cell.dataset.pos, 10); }
+
+      var gr = gridEl.getBoundingClientRect();
+      var slack = 12;
+      if (x < gr.left - slack || x > gr.right + slack || y < gr.top - slack || y > gr.bottom + slack) {
+        return null;
+      }
+
+      var best = null;
+      var bestDist = Infinity;
+      var bestProjection = -Infinity;
+      var directional = !!bias && bias.dx * bias.dx + bias.dy * bias.dy >= 4;
+      for (var pos = 0; pos < state.width; pos++) {
+        var r = cells[pos].getBoundingClientRect();
+        var dx = Math.max(r.left - x, 0, x - r.right);
+        var dy = Math.max(r.top - y, 0, y - r.bottom);
+        var dist = dx * dx + dy * dy;
+        if (dist > slack * slack) { continue; }
+        var projection = bias ? ((r.left + r.right) / 2 - bias.x) * bias.dx +
+          ((r.top + r.bottom) / 2 - bias.y) * bias.dy : 0;
+        // 有明确移动方向时，间隙归前方那一格：从 bit4 向右拖，刚进入 3/4 间隙
+        // 就应选 bit3，而不是因为离 bit4 近 1px 又粘回起点。静止释放才按最近格。
+        var better = best === null;
+        if (!better && directional) {
+          better = projection > bestProjection + 0.5 ||
+            (Math.abs(projection - bestProjection) < 0.5 && dist < bestDist);
+        } else if (!better) {
+          better = dist < bestDist || (Math.abs(dist - bestDist) < 0.5 && projection > bestProjection);
+        }
+        if (better) {
+          best = pos;
+          bestDist = dist;
+          bestProjection = projection;
+        }
+      }
+      return best;
     }
 
     // ---- 渲染：值高亮 / 位域选中 / 拖动预览 ----
@@ -253,10 +321,17 @@
         var inField = fld !== null && pos >= fld.start && pos <= fld.end;
         valSpans[pos].textContent = on ? '1' : '0';
         cells[pos].classList.toggle('on', on);
+        cells[pos].classList.toggle('one', on);
         cells[pos].classList.toggle('sel', inSel);
         cells[pos].classList.toggle('drag', inDrag);
         cells[pos].classList.toggle('nib', inNib);
         cells[pos].classList.toggle('field', inField);
+        cells[pos].classList.toggle('cursor', pos === cursor);
+        if (inField && state.fieldColor) {
+          cells[pos].style.setProperty('--fc', state.fieldColor);
+        } else {
+          cells[pos].style.removeProperty('--fc');
+        }
       }
       scheduleFrame();
     }
@@ -277,55 +352,64 @@
       if (!cell || !gridEl.contains(cell)) { return; }
       e.preventDefault(); // 阻止文本选择/默认拖动
       var pos = parseInt(cell.dataset.pos, 10);
+      cursor = pos;
+      anchor = -1;
+      try { rootEl.focus({ preventScroll: true }); } catch (err) { rootEl.focus(); }
       drag = {
         pointerId: e.pointerId,
         startPos: pos,
         currentPos: pos,
         startX: e.clientX,
         startY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
         moved: false
       };
-      // 【待实测】Pointer Capture：捕获后 pointer 事件持续派发到起始格（并经冒泡到 gridEl）。
-      // move 时的命中检测用 document.elementFromPoint，不受捕获影响。
+      // Pointer Capture 让事件持续派发到起始格；window 上的 move/up 监听则兼容
+      // 某些 Electron 版本捕获失败的情况。命中检测仍按真实指针坐标走。
       try {
         cell.setPointerCapture(e.pointerId);
       } catch (err) {
-        // 捕获失败不阻塞：事件仍冒泡到 gridEl
+        // 捕获失败不阻塞
       }
       renderCells(); // 立即显示单格预览
     });
 
-    gridEl.addEventListener('pointermove', function (e) {
+    window.addEventListener('pointermove', function (e) {
       if (!drag || e.pointerId !== drag.pointerId) { return; }
       var dx = e.clientX - drag.startX;
       var dy = e.clientY - drag.startY;
       if (!drag.moved && dx * dx + dy * dy >= CLICK_THRESHOLD_PX * CLICK_THRESHOLD_PX) {
         drag.moved = true;
       }
-      var cellPos = cellAtPoint(e.clientX, e.clientY);
+      var bias = { x: drag.lastX, y: drag.lastY, dx: e.clientX - drag.lastX, dy: e.clientY - drag.lastY };
+      drag.lastX = e.clientX;
+      drag.lastY = e.clientY;
+      var cellPos = cellAtPoint(e.clientX, e.clientY, bias);
       if (cellPos !== null && cellPos !== drag.currentPos) {
         drag.currentPos = cellPos;
         renderCells(); // 实时预览
       }
     });
 
-    gridEl.addEventListener('pointerup', function (e) {
+    window.addEventListener('pointerup', function (e) {
       if (!drag || e.pointerId !== drag.pointerId) { return; }
       var d = drag;
       drag = null;
-      var endPos = cellAtPoint(e.clientX, e.clientY);
-      if (endPos !== null) {
-        if (!d.moved || endPos === d.startPos) {
-          onToggleBit(d.startPos);   // 单击（移动 < 3px）→ 翻转 bit
-        } else {
-          var rng = normalizeRange(d.startPos, endPos);
-          onCommitRange(rng.start, rng.end); // 拖动落定 → 锁定位域范围（bh_grid.py:135-138）
-        }
+      // 松手时用整个手势的方向，而不是最后一帧方向：最后一帧可能已经停在间隙里。
+      var bias = { x: d.startX, y: d.startY, dx: e.clientX - d.startX, dy: e.clientY - d.startY };
+      var endPos = cellAtPoint(e.clientX, e.clientY, bias);
+      var target = endPos !== null ? endPos : d.currentPos;
+      if (!d.moved) {
+        onToggleBit(d.startPos);   // 单击（移动 < 3px）→ 翻转 bit
+      } else if (target !== null && (endPos !== null || target !== d.startPos)) {
+        var rng = normalizeRange(d.startPos, target);
+        onCommitRange(rng.start, rng.end); // 松手在间隙上也按拖动方向落定
       }
       renderCells(); // 清除预览高亮
     });
 
-    gridEl.addEventListener('pointercancel', function (e) {
+    window.addEventListener('pointercancel', function (e) {
       if (drag && e.pointerId === drag.pointerId) {
         drag = null;
         renderCells();
@@ -349,6 +433,59 @@
       onHoverBit(null);
     });
 
+    // ---- 键盘：方向键移动光标，Shift+方向键扩选，空格翻转，Enter 选中一位 ----
+    // 焦点在宿主 #grid 上（gridEl 本身不参与 tab 顺序），所以监听 rootEl。
+    rootEl.addEventListener('focus', function () {
+      if (cursor < 0) { cursor = state.sel ? state.sel.start : 0; }
+      renderCells();
+    });
+    rootEl.addEventListener('blur', function () {
+      cursor = -1;
+      anchor = -1;
+      renderCells();
+    });
+    rootEl.addEventListener('keydown', function (e) {
+      var k = e.key;
+      var cols = Math.min(MAX_COLS, state.width);
+      var step = 0;
+      // 视觉方向：bit0 在右下、最高位在左上
+      if (k === 'ArrowLeft') { step = 1; }
+      else if (k === 'ArrowRight') { step = -1; }
+      else if (k === 'ArrowUp') { step = cols; }
+      else if (k === 'ArrowDown') { step = -cols; }
+      else if (k === 'Home') { cursor = state.width - 1; e.preventDefault(); renderCells(); return; }
+      else if (k === 'End') { cursor = 0; e.preventDefault(); renderCells(); return; }
+      else if (k === ' ' || k === 'Enter') {
+        e.preventDefault();
+        if (cursor < 0) { cursor = state.sel ? state.sel.start : 0; }
+        if (k === 'Enter') { onCommitRange(cursor, cursor); }
+        else { onToggleBit(cursor); }
+        return;
+      } else if (k === '0' || k === '1') {
+        e.preventDefault();
+        if (cursor < 0) { cursor = state.sel ? state.sel.start : 0; }
+        if (cursor >= 0 && cursor < state.width) { onSetBit(cursor, k === '1'); }
+        return;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      if (cursor < 0) { cursor = state.sel ? state.sel.start : 0; }
+      var next = cursor + step;
+      if (next < 0) { next = 0; }
+      if (next >= state.width) { next = state.width - 1; }
+      if (e.shiftKey) {
+        if (anchor < 0) { anchor = cursor; }
+        cursor = next;
+        onCommitRange(Math.min(anchor, cursor), Math.max(anchor, cursor));
+      } else {
+        anchor = -1;
+        cursor = next;
+        if (state.sel) { onClearSelection(); }
+        renderCells();
+      }
+    });
+
     return {
       /** 外部状态同步：value 为 BigInt，sel 为 {start,end}|null，width 为 8/16/32/64，
        *  field 为协议模式下要高亮的字段范围 {start,end}|null */
@@ -357,6 +494,7 @@
         state.sel = next.sel || null;
         state.width = next.width || NBITS;
         state.field = next.field || null;
+        state.fieldColor = next.fieldColor || '';
         renderCells();
       }
     };
@@ -368,6 +506,7 @@
     computeMask: computeMask,
     extractField: extractField,
     normalizeRange: normalizeRange,
-    gridShape: gridShape
+    gridShape: gridShape,
+    rangeSegments: rangeSegments
   };
 });

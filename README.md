@@ -53,7 +53,7 @@
 ## 在 uTools 里加载
 
 **方式一：开发者工具（推荐，能改代码）**
-1. 克隆本仓库
+1. 拿到本仓库：`git clone https://github.com/qmjianda/utools-bitcalc.git`，或在 GitHub 页面 `Code → Download ZIP` 解压
 2. uTools → 应用市场旁的「开发者工具」→ 新建项目 → 选择仓库根目录（含 `plugin.json`）
 3. 保存后主输入框输入 `bitcalc` 进入
 

@@ -133,14 +133,17 @@
       var tracks = [];
       for (var g = 0; g < shape.cols / 4; g++) {
         if (g > 0) { tracks.push('10px'); }
-        tracks.push('repeat(4, 1fr)');
+        // minmax(0, 1fr) 而不是 1fr：列宽可以压到比内容还窄，
+        // 否则 16 列的最小内容宽（约 450px）会把网格顶出 434px 的舞台，
+        // 最后一列压到右侧分栏线上。窄了以后字号不变，只是格子更紧凑。
+        tracks.push('repeat(4, minmax(0, 1fr))');
       }
       gridEl.style.gridTemplateColumns = tracks.join(' ');
       // 每位给一个宽度上限（约 36px），整片网格的 max-width 按列数算：
-      // 8 位时只有 8 列，若不封顶会被 1fr 拉成一排宽条；64 位时又可能撑破窗口。
+      // 8 位时只有 8 列，若不封顶会被 1fr 拉成一排宽条；64 位时上限还要让位于容器实宽。
       var groups = Math.ceil(shape.cols / 4);
       gridEl.style.maxWidth =
-        (shape.cols * 36 + Math.max(0, groups - 1) * 10 + (shape.cols - 1) * 3) + 'px';
+        'min(100%, ' + (shape.cols * 36 + Math.max(0, groups - 1) * 10 + (shape.cols - 1) * 3) + 'px)';
 
       gridEl.textContent = '';
       // 清空把两个外框一起删了，置空后下一帧 placeFrame 会重建

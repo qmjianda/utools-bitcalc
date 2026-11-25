@@ -290,11 +290,13 @@ async function main() {
     '0'
   );
   await assert('无致命错误条', `document.querySelectorAll('.fatal').length`, 0);
+  // BIN 行已删：64 位二进制由位网格表达，主进制切换只留 DEC/HEX/OCT
   await assert(
-    'BIN 读数 = 64 位',
-    `document.getElementById('val-bin').textContent.replace(/\\s/g,'').length`,
-    64
+    '主进制切换 = 三档',
+    `document.querySelectorAll('#base-switch button').length`,
+    3
   );
+  await assert('BIN 读数行已移除', `!!document.getElementById('val-bin')`, false);
   await assert(
     'pow(2,17)|0xFF00 的 DEC',
     `document.getElementById('val-dec').textContent`,
@@ -339,7 +341,7 @@ async function main() {
   await assert(
     '小端 HEX = 字节反转',
     `document.getElementById('val-hex').textContent`,
-    '0x00FF 0200 0000 0000'
+    '0x00FF020000000000'
   );
   await evalJs(`document.getElementById('endian-btn').click()`); // 还原
   await sleep(100);
@@ -359,9 +361,9 @@ async function main() {
   await assert('32 位 f32 读数 = 1.5', `document.getElementById('val-float').textContent`, '1.5');
   await assert('32 位：浮点行标签 F32', `document.getElementById('float-name').textContent`, 'F32');
   await assert(
-    '32 位：BIN 只留 32 位',
-    `document.getElementById('val-bin').textContent.replace(/\\s/g,'').length`,
-    32
+    '32 位：HEX 读数 8 位',
+    `document.getElementById('val-hex').textContent`,
+    '0x3FC00000'
   );
   await assert('32 位：格子 32 个', `document.querySelectorAll('.cell').length`, 32);
   // 布局自检：内容不得超出 uTools 会给的窗口高度（超出就会被裁）

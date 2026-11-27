@@ -1,5 +1,13 @@
-# 调试台产出的截图（每次跑 dev/shot*.mjs 都会覆盖）
-dev/*.png
+# 发行打包产物（由 npm run release 生成）
+dist/
+
+# 依赖
+node_modules/
+
+# 本机开发工具与缓存
+.opencode/
+.agents/
+skills-lock.json
 
 # 系统与编辑器
 .DS_Store
@@ -8,13 +16,5 @@ desktop.ini
 .vscode/
 .idea/
 
-# 打包产物
-*.upx
-node_modules/
-
-# headless Chrome profile created by dev/audit.mjs
-dev/.chrome-profile/
-dev/legacy-cdp/
-dev/legacy-cdp*/
-dev/.chrome-profile*/
-dev/.shot-profile*/
+# 日志
+*.log

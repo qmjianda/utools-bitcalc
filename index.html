@@ -1,242 +1,431 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
-<meta charset="UTF-8">
-<title>bitcalc</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>bitcalc</title>
+  <link rel="icon" href="logo.png">
+  <script src="src/theme-init.js"></script>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="app" id="app">
-
-  <svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
-    <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.2" y="5.2" width="8" height="8" rx="1.6"/><path d="M3.2 10.8V4.8a1.6 1.6 0 0 1 1.6-1.6h6"/></symbol>
-    <symbol id="i-history" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.5-3.6"/><path d="M3 4v3.2h3.2"/><path d="M8 5.4V8l2 1.3"/></symbol>
-    <symbol id="i-sliders" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 11.5h11"/><circle cx="6" cy="4.5" r="1.6"/><circle cx="10" cy="11.5" r="1.6"/></symbol>
-    <symbol id="i-fields" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7"/></symbol>
-    <symbol id="i-more" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"/></symbol>
-    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="M4 6.5 8 10l4-3.5"/></symbol>
-    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></symbol>
-    <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
-    <symbol id="i-edit" viewBox="0 0 16 16"><path d="M10.8 2.8l2.4 2.4L5.4 13H3v-2.4z"/><path d="M9.8 3.8l2.4 2.4"/></symbol>
-    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.4l3.2 3.1L13 4.6"/></symbol>
-    <symbol id="i-braces" viewBox="0 0 16 16"><path d="M6 2.8c-1.4 0-1.6.8-1.6 1.9v1.1c0 .8-.4 1.2-1.1 1.2.7 0 1.1.4 1.1 1.2v1.1c0 1.1.2 1.9 1.6 1.9M10 2.8c1.4 0 1.6.8 1.6 1.9v1.1c0 .8.4 1.2 1.1 1.2-.7 0-1.1.4-1.1 1.2v1.1c0 1.1-.2 1.9-1.6 1.9"/></symbol>
-    <symbol id="i-undo" viewBox="0 0 16 16"><path d="M4 6.5H9a3.5 3.5 0 0 1 0 7H6"/><path d="M6.5 4 4 6.5 6.5 9"/></symbol>
-    <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3.5 4.5h9M6 4.5V3h4v1.5M5 4.5l.5 8h5l.5-8"/></symbol>
+  <svg class="svg-sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"></path><path d="M4 9h9a7 7 0 0 1 0 14h-2"></path></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"></path><path d="M20 9h-9a7 7 0 0 0 0 14h2"></path></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.42"></path></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 1 1 4 2c-.8.55-1.5 1.1-1.5 2.5"></path><path d="M12 17.5h.01"></path></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5z"></path><path d="m3 12 9 5 9-5M3 17l9 5 9-5"></path></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"></path></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5"></path></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M7 3v6h10V3M7 21v-7h10v7"></path></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3z"></path><path d="M12 9v5M12 18h.01"></path></symbol>
+    <symbol id="i-calculator" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"></rect><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h.01M16 19h.01"></path></symbol>
   </svg>
 
-  <header class="topbar">
-    <div class="expr-field">
-      <span class="expr-mark" aria-hidden="true">ƒx</span>
-      <input id="expr-input" class="expr-input" type="text" autocomplete="off" spellcheck="false"
-             aria-label="表达式输入" placeholder="输入表达式，例如 0xFF、1<<8 | 3">
-    </div>
-    <div class="top-actions">
-      <label class="width-btn" title="位宽">
-        <span id="width-label">64</span> 位
-        <select id="width-select" aria-label="位宽">
-          <option value="8">8 位</option>
-          <option value="16">16 位</option>
-          <option value="32">32 位</option>
-          <option value="64" selected>64 位</option>
-        </select>
-        <svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
-      </label>
+  <a class="skip-link" href="#main">跳到主要内容</a>
 
-      <button id="fields-btn" class="fields-btn" type="button" title="折叠或展开字段面板">
-        字段 <b id="fields-count">0</b>
-      </button>
-
-      <div class="menu-wrap">
-        <button id="display-btn" class="icon-btn" type="button" aria-haspopup="true" aria-expanded="false"
-                title="显示设置" aria-label="显示设置">
-          <svg class="icon"><use href="#i-sliders"/></svg>
-        </button>
-        <div id="display-menu" class="popmenu" hidden role="menu" aria-label="显示设置">
-          <label class="menu-check">
-            <input type="checkbox" id="signed-chk">
-            <span>有符号整数</span>
-          </label>
-          <button id="endian-btn" class="menu-row" type="button" title="切换 HEX 字节序">
-            <span>HEX 字节序</span><b>BE</b>
-          </button>
-        </div>
-      </div>
-
-      <button id="history-btn" class="icon-btn" type="button" aria-haspopup="true" aria-expanded="false"
-              title="历史记录（Ctrl+H）" aria-label="历史记录">
-        <svg class="icon"><use href="#i-history"/></svg>
-      </button>
-
-      <div class="menu-wrap">
-        <button id="more-btn" class="icon-btn" type="button" aria-haspopup="true" aria-expanded="false"
-                title="更多" aria-label="更多">
-          <svg class="icon"><use href="#i-more"/></svg>
-        </button>
-        <div id="more-menu" class="popmenu" hidden role="menu" aria-label="更多">
-          <button id="undo-btn" class="menu-row" type="button">
-            <span>撤销</span><kbd>Ctrl Z</kbd>
-          </button>
-          <button id="clear-sel-btn" class="menu-row" type="button">
-            <span>清除选区</span><kbd>Del</kbd>
-          </button>
-          <button id="copy-all-btn" class="menu-row" type="button">
-            <span>复制整值</span><kbd>HEX</kbd>
-          </button>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <div class="content" id="content">
-    <div class="maincol">
-      <section class="valuebar" aria-label="当前值">
-        <div class="primary">
-          <div class="primary-head">
-            <span class="eyebrow" id="eyebrow">整值 · 64 位</span>
-            <div class="bases" id="base-switch" role="group" aria-label="主显示进制">
-              <button type="button" data-base="hex" aria-pressed="true">HEX</button>
-              <button type="button" data-base="dec" aria-pressed="false">DEC</button>
-              <button type="button" data-base="oct" aria-pressed="false">OCT</button>
-            </div>
-            <div class="ctx-actions" id="ctx-actions" hidden>
-              <button id="ctx-edit" class="ctx-btn" type="button" title="写入选区">
-                <svg class="icon"><use href="#i-edit"/></svg>改值
-              </button>
-              <button id="ctx-clear" class="ctx-btn" type="button" title="清除选区">
-                <svg class="icon"><use href="#i-x"/></svg>清除
-              </button>
-            </div>
-          </div>
-          <div class="primary-row">
-            <span class="big" id="val-big" title="点击复制">0x0</span>
-            <button id="copy-main" class="copy-ghost" type="button" title="复制主值" aria-label="复制主值">
-              <svg class="icon"><use href="#i-copy"/></svg>
+  <div class="app">
+    <main id="main" class="main">
+      <section class="value-section" aria-label="当前值读数">
+        <div class="base-list" role="group" aria-label="进制读数，点击进制行切换主显示">
+          <div class="base-row" data-base-row="HEX">
+            <button class="base-main" type="button" data-base="HEX" aria-pressed="true" title="设为主进制">
+              <span class="base-label">HEX</span>
+              <code class="base-value" id="valueHex">0000 0000 0000 0000</code>
+            </button>
+            <button class="copy-btn" type="button" data-copy-kind="hex" title="复制 HEX" aria-label="复制 HEX">
+              <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
             </button>
           </div>
-          <div class="sel-meta" id="sel-meta" hidden></div>
+          <div class="base-row" data-base-row="DEC">
+            <button class="base-main" type="button" data-base="DEC" aria-pressed="false" title="设为主进制">
+              <span class="base-label">DEC</span>
+              <code class="base-value" id="valueDec">0</code>
+            </button>
+            <button class="copy-btn" type="button" data-copy-kind="dec" title="复制 DEC" aria-label="复制 DEC">
+              <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+            </button>
+          </div>
+          <div class="base-row" data-base-row="OCT">
+            <button class="base-main" type="button" data-base="OCT" aria-pressed="false" title="设为主进制">
+              <span class="base-label">OCT</span>
+              <code class="base-value" id="valueOct">0o0</code>
+            </button>
+            <button class="copy-btn" type="button" data-copy-kind="oct" title="复制 OCT" aria-label="复制 OCT">
+              <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+            </button>
+          </div>
+          <div class="base-row" data-base-row="BIN">
+            <button class="base-main" type="button" data-base="BIN" aria-pressed="false" title="设为主进制">
+              <span class="base-label">BIN</span>
+              <code class="base-value bin-value" id="valueBin">0000 0000</code>
+            </button>
+            <button class="copy-btn" type="button" data-copy-kind="bin" title="复制 BIN" aria-label="复制 BIN">
+              <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="float-list" id="floatList" hidden>
+          <div class="float-row">
+            <span class="float-label">F32</span>
+            <code class="float-value" id="valueF32">0</code>
+            <button class="copy-btn" type="button" data-copy-kind="f32" title="复制 F32" aria-label="复制 F32">
+              <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+            </button>
+          </div>
+          <div class="float-row" id="floatF64Row">
+            <span class="float-label">F64</span>
+            <code class="float-value" id="valueF64">0</code>
+            <button class="copy-btn" type="button" data-copy-kind="f64" title="复制 F64" aria-label="复制 F64">
+              <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>
+            </button>
+          </div>
         </div>
       </section>
 
-      <div class="workbench" id="workbench">
-        <main class="stage">
-          <div class="canvas" id="canvas">
-            <div id="grid" tabindex="0" role="group" aria-label="位网格"></div>
+      <section class="expr-section" aria-label="表达式计算">
+        <form class="expr-form" id="exprForm" novalidate>
+          <span class="expr-eq" aria-hidden="true">=</span>
+          <label class="sr-only" for="exprInput">表达式</label>
+          <input class="expr-input" id="exprInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="输入表达式，例如 (1 &lt;&lt; 12) - 1" aria-describedby="exprError">
+          <button class="btn btn-primary" type="submit">计算</button>
+          <div class="expr-tools">
+            <button class="icon-btn" id="undoBtn" type="button" title="撤销 (Ctrl/⌘+Z)" aria-label="撤销" disabled>
+              <svg class="icon" aria-hidden="true"><use href="#i-undo"></use></svg>
+            </button>
+            <button class="icon-btn" id="redoBtn" type="button" title="重做 (Ctrl/⌘+Shift+Z)" aria-label="重做" disabled>
+              <svg class="icon" aria-hidden="true"><use href="#i-redo"></use></svg>
+            </button>
+            <span class="expr-tools-sep" aria-hidden="true"></span>
+            <button class="top-btn" id="fieldsBtn" type="button" title="字段与方案">
+              <svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg>
+              <span class="top-btn-label">字段</span>
+              <span class="top-btn-count" id="menuFieldCount">0</span>
+            </button>
+            <details class="more" id="moreMenu">
+              <summary class="icon-btn" title="更多" aria-label="更多">
+                <svg class="icon" aria-hidden="true"><use href="#i-more"></use></svg>
+              </summary>
+              <div class="menu">
+                <button class="menu-item" id="menuHistory" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>
+                  <span>操作历史</span>
+                </button>
+                <button class="menu-item" id="menuSettings" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg>
+                  <span>显示设置</span>
+                </button>
+                <button class="menu-item" id="menuHelp" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#i-help"></use></svg>
+                  <span>帮助与快捷键</span>
+                </button>
+                <div class="menu-sep" role="separator"></div>
+                <button class="menu-item" id="menuTheme" type="button">
+                  <svg class="icon menu-theme-moon" aria-hidden="true"><use href="#i-moon"></use></svg>
+                  <svg class="icon menu-theme-sun" aria-hidden="true"><use href="#i-sun"></use></svg>
+                  <span id="menuThemeText">切换深色主题</span>
+                </button>
+              </div>
+            </details>
           </div>
-        </main>
-      </div>
-    </div>
-
-    <aside class="inspector" id="inspector" aria-label="检查器" hidden>
-      <div class="insp-tabs" id="insp-tabs" role="tablist" aria-label="检查器">
-        <button type="button" class="insp-tab on" data-tab="fields" role="tab" aria-selected="true">
-          字段 <span class="count" id="tab-fields-count">0</span>
-        </button>
-        <button type="button" class="insp-tab" data-tab="values" role="tab" aria-selected="false">值</button>
-        <button type="button" class="insp-tab" data-tab="history" role="tab" aria-selected="false">历史</button>
-      </div>
-
-      <div class="insp-pane" id="insp-fields" role="tabpanel">
-        <div class="insp-sub">
-          <span id="field-summary">没有字段</span>
-          <button id="add-field" class="add" type="button" title="新增字段">
-            <svg class="icon"><use href="#i-plus"/></svg>
-          </button>
+        </form>
+        <div class="inline-message is-error" id="exprError" role="alert" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+          <span id="exprErrorText"></span>
         </div>
-        <div class="flist" id="field-list" role="listbox" tabindex="0" aria-label="字段列表"></div>
-        <div class="insp-foot">
-          <div class="coverage">
-            <div class="bar"><i id="coverage-bar"></i></div>
-            <span id="coverage-text">0 / 64</span>
-            <span id="overlap-text" class="ok">无重叠</span>
+        <div class="inline-message is-warn" id="exprNote" role="status" hidden>
+          <span id="exprNoteText"></span>
+        </div>
+      </section>
+
+      <section class="bits-section" aria-label="位状态">
+        <div class="bit-grid" id="bitGrid" role="grid" aria-label="位状态"></div>
+        <div class="bit-status" id="bitStatus">
+          <p class="bit-hint" id="bitHint">点击翻转 · 拖选位段使能 · 右键 / Esc 取消</p>
+          <div class="enable-controls" id="enableControls" hidden>
+            <span class="enable-label">位使能</span>
+            <strong id="enableRange">15:12</strong>
+            <span class="enable-width" id="enableWidth">4 位</span>
+            <span class="enable-field" id="enableField" hidden></span>
+            <select class="enable-expand" id="enableExpandSelect" aria-label="扩展位段" title="把当前位段扩展到字节 / 16 位 / 32 位">
+              <option value="">扩展…</option>
+              <option value="8">字节</option>
+              <option value="16">16 位</option>
+              <option value="32">32 位</option>
+            </select>
+            <div class="enable-actions">
+              <button class="btn btn-quiet btn-sm" id="enableFlipBtn" type="button">翻转</button>
+              <button class="btn btn-quiet btn-sm" id="enableSet0Btn" type="button">置 0</button>
+              <button class="btn btn-quiet btn-sm" id="enableSet1Btn" type="button">置 1</button>
+            </div>
+            <button class="icon-btn enable-clear" id="enableClearBtn" type="button" title="取消位使能 (Esc)" aria-label="取消位使能">
+              <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+            </button>
           </div>
-          <button id="define-fields" class="insp-define" type="button">
-            <svg class="icon"><use href="#i-braces"/></svg>定义字段
-          </button>
         </div>
-      </div>
+      </section>
 
-      <div class="insp-pane" id="insp-values" role="tabpanel" hidden>
-        <div class="insp-sub"><span>当前值 · 全部表示</span></div>
-        <div class="value-table" id="value-table"></div>
-      </div>
-
-      <div class="insp-pane" id="insp-history" role="tabpanel" hidden>
-        <div class="insp-sub">
-          <span>最近 60 条</span>
-          <button id="history-clear" class="text-btn" type="button">清空</button>
+      <section class="field-strip" id="fieldStrip" aria-label="字段值" hidden>
+        <div class="field-strip-head">
+          <span>字段值 · 点击选中字段位段</span>
+          <button class="link-btn" id="fieldStripEditBtn" type="button">编辑定义</button>
         </div>
-        <ul class="history-list" id="history-list" role="listbox" tabindex="0" aria-label="历史记录"></ul>
-        <div class="empty" id="history-empty">还没有记录。输入表达式或改字段后自动记下。</div>
-      </div>
-    </aside>
+        <div class="field-strip-list" id="fieldStripList"></div>
+      </section>
+    </main>
   </div>
 
-  <footer class="statusbar">
-    <div class="status-left">
-      <span>点按翻转</span><span class="dot-sep"></span>
-      <span>拖动选择</span><span class="dot-sep"></span>
-      <kbd>Del</kbd><span>清除</span>
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
+  <div class="sr-only" id="srStatus" role="status" aria-live="polite"></div>
+
+  <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <div>
+          <span class="eyebrow">DISPLAY</span>
+          <h2 id="settingsTitle">显示设置</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close-dialog="settingsDialog" title="关闭" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </header>
+      <div class="settings-dialog">
+        <div class="setting-group">
+          <span class="setting-label" id="dialogWidthLabel">位宽</span>
+          <div class="segmented" id="dialogWidthSwitch" role="group" aria-labelledby="dialogWidthLabel">
+            <button type="button" data-width="8" aria-pressed="false">8</button>
+            <button type="button" data-width="16" aria-pressed="false">16</button>
+            <button type="button" data-width="32" aria-pressed="false">32</button>
+            <button type="button" data-width="64" aria-pressed="true">64</button>
+          </div>
+        </div>
+        <div class="setting-group">
+          <span class="setting-label" id="dialogSignLabel">DEC 符号</span>
+          <div class="segmented" id="dialogSignSwitch" role="group" aria-labelledby="dialogSignLabel">
+            <button type="button" data-signed="0" aria-pressed="true">无符号 U</button>
+            <button type="button" data-signed="1" aria-pressed="false">有符号 S</button>
+          </div>
+        </div>
+        <div class="setting-group">
+          <span class="setting-label" id="dialogEndianLabel">HEX 字节序</span>
+          <div class="segmented" id="dialogEndianSwitch" role="group" aria-labelledby="dialogEndianLabel">
+            <button type="button" data-endian="BE" aria-pressed="true">大端 BE</button>
+            <button type="button" data-endian="LE" aria-pressed="false">小端 LE</button>
+          </div>
+        </div>
+        <div class="setting-group">
+          <span class="setting-label" id="dialogFloatLabel">浮点读数</span>
+          <label class="checkbox-row" for="dialogFloatToggle">
+            <input id="dialogFloatToggle" type="checkbox">
+            <span>显示 F32 / F64</span>
+          </label>
+        </div>
+      </div>
+      <p class="dialog-note">点击数值行可切换主进制。部分位使能时，读数与计算都按选中位段处理。</p>
+      <footer class="dialog-foot">
+        <button class="btn btn-quiet" type="button" data-close-dialog="settingsDialog">关闭</button>
+      </footer>
     </div>
-    <div class="status-right">
-      <span id="hint" role="status" aria-live="polite">点按翻转 · 拖动选择 · 输入即写回</span>
-      <span class="dot-sep"></span>
-      <span class="save-state" id="save-state"><svg class="icon"><use href="#i-check"/></svg>已保存</span>
+  </dialog>
+
+  <dialog class="dialog fields-dialog" id="fieldsDialog" aria-labelledby="fieldsTitle">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <div>
+          <span class="eyebrow">FIELDS</span>
+          <h2 id="fieldsTitle">字段与方案</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close-dialog="fieldsDialog" title="关闭" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </header>
+      <div class="fields-toolbar">
+        <span class="field-header-summary" id="fieldHeaderSummary">未定义</span>
+        <button class="link-btn" id="insertExampleBtn" type="button">插入示例</button>
+      </div>
+      <div class="fields-dialog-grid">
+        <div class="fields-editor">
+          <label class="sr-only" for="fieldText">字段定义</label>
+          <textarea class="field-textarea" id="fieldText" rows="8" spellcheck="false" autocomplete="off" placeholder="opcode 15:12&#10;dst 11:8&#10;src 7:4&#10;mode:3&#10;flag 0:0"></textarea>
+          <div class="validation" id="fieldValidation" aria-live="polite"></div>
+          <p class="field-syntax">每行一个字段：<code>opcode 15:12</code>、<code>mode:3</code>、<code>flag 7</code>；<code>#</code> 或 <code>//</code> 后为注释。</p>
+        </div>
+        <div class="fields-decode">
+          <div class="field-list" id="fieldList"></div>
+          <div class="empty-inline" id="fieldEmpty">定义字段后，这里会显示解码结果。点击字段行会选中对应位段。</div>
+        </div>
+      </div>
+      <div class="schemes-section">
+        <div class="schemes-title-row">
+          <h3 class="schemes-title">字段方案 <span class="count" id="schemeCount">0</span></h3>
+          <div class="scheme-file-actions">
+            <button class="link-btn" id="exportSchemesBtn" type="button">导出</button>
+            <button class="link-btn" id="importSchemesBtn" type="button">导入</button>
+            <input id="importSchemesInput" type="file" accept=".json,application/json" hidden>
+          </div>
+        </div>
+        <form class="scheme-form" id="schemeForm" novalidate>
+          <label class="sr-only" for="schemeName">方案名称</label>
+          <input id="schemeName" type="text" maxlength="40" autocomplete="off" placeholder="方案名称">
+          <button class="btn btn-primary" type="submit">
+            <svg class="icon" aria-hidden="true"><use href="#i-save"></use></svg>
+            <span>保存当前定义</span>
+          </button>
+        </form>
+        <div class="scheme-list" id="schemeList"></div>
+        <div class="empty-inline" id="schemeEmpty">还没有保存的方案。</div>
+      </div>
+      <footer class="dialog-foot">
+        <button class="btn btn-quiet" type="button" data-close-dialog="fieldsDialog">关闭</button>
+      </footer>
     </div>
-  </footer>
+  </dialog>
 
-  <!-- 字段定义：覆盖主区的抽屉式面板，不改变窗口高度 -->
-  <section class="spec" id="spec-panel" role="dialog" aria-modal="true" aria-label="字段定义" hidden>
-    <div class="spec-head">
-      <span class="spec-title">字段定义</span>
-      <button class="mini" id="spec-sample" type="button" title="填入一段示例定义（不会动已应用的字段）">示例</button>
-      <button class="mini" id="spec-help-toggle" type="button" aria-expanded="true"
-              aria-controls="spec-help" title="显示或隐藏语法说明">语法</button>
-      <button class="mini icon-mini" id="spec-close" type="button" title="关闭" aria-label="关闭">
-        <svg class="icon"><use href="#i-x"/></svg>
-      </button>
+  <dialog class="dialog" id="historyDialog" aria-labelledby="historyTitle">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <div>
+          <span class="eyebrow">HISTORY</span>
+          <h2 id="historyTitle">操作历史</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close-dialog="historyDialog" title="关闭" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </header>
+      <div class="dialog-tools">
+        <span class="count-text" id="historyCount">0 条</span>
+        <button class="btn btn-danger-ghost btn-sm" id="clearHistoryBtn" type="button">
+          <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>
+          <span>清空历史</span>
+        </button>
+      </div>
+      <div class="history-list" id="historyList"></div>
+      <div class="empty-state" id="historyEmpty">
+        <svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>
+        <strong>还没有操作记录</strong>
+        <span>表达式计算、位段写入和位翻转会自动记录。</span>
+      </div>
+      <footer class="dialog-foot">
+        <button class="btn btn-quiet" type="button" data-close-dialog="historyDialog">关闭</button>
+      </footer>
     </div>
+  </dialog>
 
-    <div class="spec-help" id="spec-help">
-      <div><code>名称 高:低</code> 指定位段，如 <code>opcode 15:12</code></div>
-      <div><code>名称:位宽</code> 或 <code>名称 位宽</code> 从最高位往下顺排（<code>mode 3</code> = 占 3 位）；单比特写 <code>flag 15:15</code></div>
-      <div><code>[ ]</code> 可省略空格；<code>#</code> 开头整行注释；总宽不超过 64 位</div>
+  <dialog class="dialog help-dialog" id="helpDialog" aria-labelledby="helpTitle">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <div>
+          <span class="eyebrow">REFERENCE</span>
+          <h2 id="helpTitle">bitcalc 使用指南</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close-dialog="helpDialog" title="关闭" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </header>
+      <div class="help-body">
+        <section>
+          <h3>表达式</h3>
+          <p>支持十进制、<code>0x</code> 十六进制、<code>0b</code> 二进制、<code>0o</code> 八进制和下划线分隔。计算按 64 位无符号位模式进行，结果会按当前位宽截断。</p>
+          <ul class="help-list">
+            <li><code>0xFF &amp; 0x0F</code>、<code>(1 &lt;&lt; 12) - 1</code></li>
+            <li><code>popcount(0xDEADBEEF)</code>、<code>rotl(0x1234, 8)</code></li>
+            <li><code>&gt;&gt;</code> 是逻辑右移；<code>asr(x, n)</code> 是按当前位宽符号位扩展的算术右移。</li>
+            <li>除法向零截断；表达式错误时保留当前值。</li>
+          </ul>
+        </section>
+        <section>
+          <h3>运算符</h3>
+          <div class="precedence-table" role="table" aria-label="运算符优先级">
+            <div><span>高</span><code>~ + -</code><span>一元</span></div>
+            <div><span></span><code>**</code><span>右结合</span></div>
+            <div><span></span><code>* / %</code><span></span></div>
+            <div><span></span><code>+ -</code><span></span></div>
+            <div><span></span><code>&lt;&lt; &gt;&gt;</code><span>移位</span></div>
+            <div><span></span><code>&amp;</code><span></span></div>
+            <div><span></span><code>^</code><span></span></div>
+            <div><span>低</span><code>|</code><span></span></div>
+          </div>
+        </section>
+        <section>
+          <h3>函数</h3>
+          <div class="function-table" id="functionTable"></div>
+        </section>
+        <section>
+          <h3>位图与位段</h3>
+          <ul class="help-list">
+            <li>点击位翻转 0/1。</li>
+            <li>在位图上按住并拖动，可以选中一段位进行部分位使能。</li>
+            <li>右键或 <code>Esc</code> 取消位使能，不改变当前值。</li>
+            <li>使能后，主读数与表达式按该位段计算，段外位不可点击。</li>
+            <li>直接在计算框输入表达式并回车，即可只写入使能的位段。</li>
+            <li>界面底部的字段值点击后会选中该字段位段，计算框中可直接修改。</li>
+          </ul>
+        </section>
+        <section>
+          <h3>字段定义</h3>
+          <div class="syntax-sample"><code>opcode 15:12<br>dst 11:8<br>src 7:4<br>mode:3<br>flag 0:0</code></div>
+          <ul class="help-list">
+            <li><code>name 15:12</code>：显式位段。</li>
+            <li><code>name:4</code>：从游标向下分配 4 位，游标从有效位宽最高位开始。</li>
+            <li><code>name 7</code>：单 bit 字段。</li>
+            <li><code>#</code> 或 <code>//</code> 后为注释；空行忽略。</li>
+            <li>重名、越界会报错；重叠会提示，但字段仍可用于解码。</li>
+          </ul>
+        </section>
+        <section>
+          <h3>快捷键</h3>
+          <div class="shortcut-grid">
+            <div><kbd>Enter</kbd><span>计算表达式</span></div>
+            <div><kbd>↑ / ↓</kbd><span>表达式历史</span></div>
+            <div><kbd>Ctrl/⌘ Z</kbd><span>撤销数值修改</span></div>
+            <div><kbd>Ctrl/⌘ ⇧ Z</kbd><span>重做数值修改</span></div>
+            <div><kbd>/</kbd><span>聚焦表达式</span></div>
+            <div><kbd>?</kbd><span>打开帮助</span></div>
+            <div><kbd>Esc</kbd><span>取消位段 / 关闭弹窗</span></div>
+            <div><kbd>拖选</kbd><span>选择位段</span></div>
+            <div><kbd>Space</kbd><span>翻转当前聚焦位</span></div>
+          </div>
+        </section>
+        <section>
+          <h3>数据</h3>
+          <p>设置、字段定义和方案使用 uTools 数据存储；历史记录保存在当前设备。浏览器环境使用 localStorage。本工具不联网。</p>
+        </section>
+      </div>
+      <footer class="dialog-foot">
+        <button class="btn btn-primary" type="button" data-close-dialog="helpDialog">知道了</button>
+      </footer>
     </div>
+  </dialog>
 
-    <textarea id="spec-text" spellcheck="false" autocomplete="off"
-              aria-describedby="spec-help spec-msg"
-              placeholder="opcode 15:12&#10;rd 11:8&#10;rs 7:4&#10;func 3:0"></textarea>
-
-    <div class="spec-schemes">
-      <label class="sr-only" for="scheme-select">已保存的方案</label>
-      <select id="scheme-select" class="select">
-        <option value="">未保存的方案…</option>
-      </select>
-      <button class="btn" id="scheme-load" type="button" disabled title="把选中方案写入编辑框并应用">载入</button>
-      <button class="btn" id="scheme-save" type="button" title="把当前定义保存为命名方案">保存为…</button>
-      <button class="btn" id="scheme-del" type="button" disabled title="删除选中方案">删除</button>
+  <dialog class="dialog confirm-dialog" id="confirmDialog" aria-labelledby="confirmTitle">
+    <div class="dialog-form">
+      <header class="dialog-head">
+        <div>
+          <span class="eyebrow">CONFIRM</span>
+          <h2 id="confirmTitle">确认操作</h2>
+        </div>
+        <button class="icon-btn" type="button" data-confirm-cancel title="关闭" aria-label="关闭">
+          <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </header>
+      <p class="confirm-message" id="confirmMessage"></p>
+      <footer class="dialog-foot">
+        <button class="btn btn-quiet" id="confirmCancelBtn" type="button" data-confirm-cancel>取消</button>
+        <button class="btn btn-danger" id="confirmOkBtn" type="button">确认</button>
+      </footer>
     </div>
+  </dialog>
 
-    <div class="spec-save-name" id="scheme-form" hidden>
-      <label class="sr-only" for="scheme-name">方案名</label>
-      <input id="scheme-name" type="text" maxlength="24" placeholder="方案名，例如 USB 请求"
-             autocomplete="off">
-      <button class="btn primary" id="scheme-name-ok" type="button">保存</button>
-      <button class="btn" id="scheme-name-cancel" type="button">取消</button>
-    </div>
-
-    <div class="spec-actions">
-      <span class="spec-msg" id="spec-msg" role="status" aria-live="polite"></span>
-      <button class="btn" id="spec-cancel" type="button">取消</button>
-      <button class="btn primary" id="spec-save" type="button">应用</button>
-    </div>
-  </section>
-
-</div>
-
-<script src="parser.js"></script>
-<script src="grid.js"></script>
-<script src="proto.js"></script>
-<script src="store.js"></script>
-<script src="main.js"></script>
+  <script src="src/core.js"></script>
+  <script src="src/app.js"></script>
 </body>
 </html>

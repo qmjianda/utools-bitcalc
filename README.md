@@ -35,16 +35,16 @@ bitcalc 是一个 64 位的位运算计算器，以 uTools 插件运行。输入
 
 ## 截图
 
-<img src="docs/screenshots/01-hero.png" width="900" alt="读数、位图、字段在同一屏">
+<img src="docs/screenshots/01-hero.png" width="860" alt="读数、位图、字段在同一屏">
 
 | 拖选一段位，只读写这一段 | 字段定义，写一行看一行 |
 | --- | --- |
-| <img src="docs/screenshots/02-enable.png" width="440" alt="位使能"> | <img src="docs/screenshots/03-fields.png" width="440" alt="字段定义"> |
+| <img src="docs/screenshots/02-enable.png" width="400" alt="位使能"> | <img src="docs/screenshots/03-fields.png" width="400" alt="字段定义"> |
 | 框选 63:60 后读数只剩这 4 位，写 0x5 也只改这 4 位 | `opcode 15:12`、`mode:4` 一行一个，右边跟着解码 |
 
 | 每一步都能退回去 | 帮助就在插件里 |
 | --- | --- |
-| <img src="docs/screenshots/04-history.png" width="440" alt="操作历史"> | <img src="docs/screenshots/05-help.png" width="440" alt="内置帮助"> |
+| <img src="docs/screenshots/04-history.png" width="400" alt="操作历史"> | <img src="docs/screenshots/05-help.png" width="400" alt="内置帮助"> |
 | 表达式、字段写入、位翻转都有记录，带前后值 | 按 `?` 打开，运算符、函数、字段语法都在里面 |
 
 ## 功能

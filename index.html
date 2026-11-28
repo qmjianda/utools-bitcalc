@@ -255,7 +255,7 @@
       <div class="fields-dialog-grid">
         <div class="fields-editor">
           <label class="sr-only" for="fieldText">字段定义</label>
-          <textarea class="field-textarea" id="fieldText" rows="8" spellcheck="false" autocomplete="off" placeholder="opcode 15:12&#10;dst 11:8&#10;src 7:4&#10;mode:3&#10;flag 0:0"></textarea>
+          <textarea class="field-textarea" id="fieldText" rows="8" maxlength="10000" spellcheck="false" autocomplete="off" placeholder="opcode 15:12&#10;dst 11:8&#10;src 7:4&#10;mode:3&#10;flag 0:0"></textarea>
           <div class="validation" id="fieldValidation" aria-live="polite"></div>
           <p class="field-syntax">每行一个字段：<code>opcode 15:12</code>、<code>mode:3</code>、<code>flag 7</code>；<code>#</code> 或 <code>//</code> 后为注释。</p>
         </div>

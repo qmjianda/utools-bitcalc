@@ -828,6 +828,24 @@ kbd,
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
+/* Selected bits already draw an inset ring; keep keyboard focus inside the
+   cell instead of stacking the global 2px outer outline on top. */
+.bit:focus-visible {
+  outline: none;
+}
+
+.bit:focus-visible:not(.is-selected) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+@media (forced-colors: active) {
+  .bit:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
 .bit.is-disabled {
   color: var(--faint);
   background: transparent;

@@ -75,10 +75,36 @@ function loadHistory() {
   }
 }
 
+const HISTORY_TEXT_LIMIT = 500;
+
+function trimHistoryItems(items) {
+  const list = Array.isArray(items) ? items.slice(0, 200) : [];
+  const result = [];
+  list.forEach(function (item) {
+    if (!item || typeof item !== 'object') return;
+    const entry = {
+      id: String(item.id == null ? '' : item.id).slice(0, 80),
+      ts: Number(item.ts) || 0,
+      type: String(item.type == null ? '' : item.type).slice(0, 24),
+      label: String(item.label == null ? '' : item.label).slice(0, 60),
+      expression: String(item.expression == null ? '' : item.expression).slice(0, HISTORY_TEXT_LIMIT),
+      fieldName: String(item.fieldName == null ? '' : item.fieldName).slice(0, 60),
+      hi: Number.isInteger(item.hi) ? item.hi : null,
+      lo: Number.isInteger(item.lo) ? item.lo : null,
+      before: String(item.before == null ? '' : item.before).slice(0, HISTORY_TEXT_LIMIT),
+      after: String(item.after == null ? '' : item.after).slice(0, HISTORY_TEXT_LIMIT),
+      width: Number(item.width) || 0,
+    };
+    if (!entry.id && !entry.expression && !entry.label) return;
+    result.push(entry);
+  });
+  return result;
+}
+
 function saveHistory(items) {
   if (!hasUtools()) return { ok: false, error: 'uTools 环境不可用' };
   try {
-    const list = Array.isArray(items) ? items.slice(0, 200) : [];
+    const list = trimHistoryItems(items);
     const dir = utools.getPluginLocalDataPath();
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, 'history.json');
@@ -109,13 +135,22 @@ function copyText(text) {
   return { ok: false, error: '复制不可用' };
 }
 
+function exportFileName(defaultName) {
+  const base = String(defaultName == null ? '' : defaultName)
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+    .replace(/^[.\s]+|[.\s]+$/g, '')
+    .replace(/\.json$/i, '')
+    .slice(0, 80);
+  return (base || 'bitcalc-schemes') + '.json';
+}
+
 function saveTextFile(defaultName, text) {
   if (!hasUtools()) return { ok: false, error: 'uTools 环境不可用' };
   if (typeof utools.showSaveDialog !== 'function') return { ok: false, error: '保存对话框不可用' };
   try {
     const savePath = utools.showSaveDialog({
       title: '导出字段方案',
-      defaultPath: defaultName,
+      defaultPath: exportFileName(defaultName),
       buttonLabel: '保存',
       filters: [{ name: 'JSON', extensions: ['json'] }],
     });

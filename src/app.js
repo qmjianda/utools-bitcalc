@@ -17,6 +17,8 @@
     history: 'bitcalc.history',
     theme: 'bitcalc.theme',
   };
+  // 字段定义上限：防止超大粘贴内容进入账号同步库（约 400 行定义）。
+  const FIELD_TEXT_MAX = 10000;
   const TYPE_LABELS = {
     expr: '表达式',
     field: '字段',
@@ -203,7 +205,7 @@
         return {
           id: typeof item.id === 'string' && item.id ? item.id : makeId('scheme'),
           name: item.name.slice(0, 60),
-          text: item.text,
+          text: item.text.slice(0, FIELD_TEXT_MAX),
           createdAt: Number(item.createdAt) || now,
           updatedAt: Number(item.updatedAt) || Number(item.createdAt) || now,
           width: WIDTHS.indexOf(Number(item.width)) >= 0 ? Number(item.width) : null,
@@ -380,7 +382,7 @@
     state.value = parseStoredValue(valueRaw, state.settings.width);
 
     const fieldsRaw = loaded.fields !== null && loaded.fields !== undefined ? loaded.fields : localFallback.fields;
-    state.fieldText = typeof fieldsRaw === 'string' ? fieldsRaw : '';
+    state.fieldText = typeof fieldsRaw === 'string' ? fieldsRaw.slice(0, FIELD_TEXT_MAX) : '';
 
     const schemesRaw = loaded.schemes !== null && loaded.schemes !== undefined ? loaded.schemes : localFallback.schemes;
     state.schemes = normalizeSchemes(schemesRaw);
@@ -464,7 +466,7 @@
   }
 
   function persistFields() {
-    writePersistent('fields', state.fieldText);
+    writePersistent('fields', state.fieldText.slice(0, FIELD_TEXT_MAX));
   }
 
   function persistSchemes() {
@@ -824,9 +826,9 @@
     });
   }
 
-  function focusBitCell(bit) {
+  function focusBitCell(bit, options) {
     const cell = els.bitGrid.querySelector('.bit[data-bit="' + bit + '"]');
-    if (cell) cell.focus({ preventScroll: true });
+    if (cell) cell.focus(options || { preventScroll: true });
   }
 
   function toggleBit(bit) {
@@ -1278,11 +1280,12 @@
       });
       if (switchWidth) setWidth(scheme.width);
     }
-    state.fieldText = scheme.text;
+    const fieldText = scheme.text.slice(0, FIELD_TEXT_MAX);
+    state.fieldText = fieldText;
     state.selectedFieldName = null;
     state.range = null;
     state.rangeAnchor = null;
-    els.fieldText.value = scheme.text;
+    els.fieldText.value = fieldText;
     els.schemeName.value = scheme.name;
     reparseFields();
     persistFields();
@@ -2032,7 +2035,7 @@
       dragAnchor = Number(cell.dataset.bit);
       dragMoved = false;
       state.focusBit = dragAnchor;
-      cell.focus({ preventScroll: true });
+      cell.focus({ preventScroll: true, focusVisible: false });
     });
     els.bitGrid.addEventListener('pointerover', function (event) {
       const cell = event.target.closest('.bit');
@@ -2043,7 +2046,7 @@
       dragMoved = true;
       state.focusBit = bit;
       setRange(dragAnchor, bit);
-      focusBitCell(bit);
+      focusBitCell(bit, { preventScroll: true, focusVisible: false });
     });
     document.addEventListener('pointerup', function () {
       if (!draggingBits) return;
